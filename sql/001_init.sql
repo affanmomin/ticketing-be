@@ -1,238 +1,361 @@
+-- ============================================
+-- Rebuild canonical schema (snake_case)
+-- Safe to re-run (idempotent)
+-- ============================================
+
 BEGIN;
 
--- ============================================
--- 1) NUKE DATA (but keep schema)
--- ============================================
--- Order doesn't matter with CASCADE; RESTART IDENTITY only affects serials (safe anyway)
-TRUNCATE TABLE
-  ticket_tag_map,
-  comment,
-  attachment,
-  ticket,
-  ticket_tag,
-  project_stream,
-  project,
-  user_client_map,
-  tenant_membership,
-  client_company,
-  "user",
-  tenant
-RESTART IDENTITY CASCADE;
+-- ---- Extensions & helper ----
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
+CREATE OR REPLACE FUNCTION set_updated_at()
+RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  NEW.updated_at := now();
+  RETURN NEW;
+END$$;
+
+-- ---- Enums (create if missing) ----
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname='ticket_status') THEN
+    CREATE TYPE ticket_status AS ENUM ('BACKLOG','TODO','IN_PROGRESS','REVIEW','BLOCKED','DONE','ARCHIVED');
+  END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname='ticket_priority') THEN
+    CREATE TYPE ticket_priority AS ENUM ('P0','P1','P2','P3');
+  END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname='ticket_type') THEN
+    CREATE TYPE ticket_type AS ENUM ('TASK','BUG','STORY','EPIC','SPIKE');
+  END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname='tenant_role') THEN
+    CREATE TYPE tenant_role AS ENUM ('OWNER','ADMIN','MEMBER','GUEST');
+  END IF;
+END $$;
 
 -- ============================================
--- 2) SEED DATA
+-- Tables
 -- ============================================
 
--- Tenants
-WITH t_acme AS (
-  INSERT INTO tenant (name) VALUES ('Acme Agency')
-  RETURNING id AS tenant_id
-),
-t_beta AS (
-  INSERT INTO tenant (name) VALUES ('Beta Studio')
-  RETURNING id AS tenant_id
-),
+-- TENANT
+CREATE TABLE IF NOT EXISTS tenant (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  name varchar NOT NULL UNIQUE,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
 
--- Users (global)
-u_ins AS (
-  INSERT INTO "user" (email, name, password_hash, role)
-  VALUES
-    ('admin@acme.com',  'Admin User',   '$2b$12$examplehashadmin', 'ADMIN'),
-    ('user@acme.com',   'Regular User', '$2b$12$examplehashuser',  'USER'),
-    ('owner@beta.com',  'Beta Owner',   '$2b$12$examplehashbeta',  'ADMIN')
-  RETURNING id, email
-),
-u AS (
-  SELECT * FROM u_ins
-),
+-- USER (global)
+CREATE TABLE IF NOT EXISTS "user" (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  email text NOT NULL UNIQUE,
+  name text NOT NULL,
+  password_hash text NOT NULL,
+  role text DEFAULT 'USER',
+  active boolean NOT NULL DEFAULT true,
+  last_sign_in_at timestamptz,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
 
--- Client companies (per tenant)
-c_acme AS (
-  INSERT INTO client_company (tenant_id, name, domain)
-  SELECT tenant_id, 'DataClient', 'dataclient.com' FROM t_acme
-  RETURNING id AS client_id, tenant_id
-),
-c_beta AS (
-  INSERT INTO client_company (tenant_id, name, domain)
-  SELECT tenant_id, 'MainClient', 'mainclient.io' FROM t_beta
-  RETURNING id AS client_id, tenant_id
-),
+-- CLIENT COMPANY (tenant-owned)
+CREATE TABLE IF NOT EXISTS client_company (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id uuid NOT NULL REFERENCES tenant(id) ON DELETE CASCADE,
+  name varchar NOT NULL,
+  domain varchar,
+  active boolean NOT NULL DEFAULT true,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (tenant_id, name)
+);
+-- composite uniqueness to support tenant-safe FKs
+CREATE UNIQUE INDEX IF NOT EXISTS uq_client_company_tenant_id_id
+  ON client_company(tenant_id, id);
 
--- Tenant memberships (roles in tenant; default client context optional)
-tm_acme_owner AS (
-  INSERT INTO tenant_membership (tenant_id, user_id, role, client_id)
-  SELECT a.tenant_id,
-         (SELECT id FROM u WHERE email='admin@acme.com'),
-         'OWNER',
-         c.client_id
-  FROM t_acme a JOIN c_acme c ON c.tenant_id = a.tenant_id
-  RETURNING id
-),
-tm_acme_member AS (
-  INSERT INTO tenant_membership (tenant_id, user_id, role, client_id)
-  SELECT a.tenant_id,
-         (SELECT id FROM u WHERE email='user@acme.com'),
-         'MEMBER',
-         c.client_id
-  FROM t_acme a JOIN c_acme c ON c.tenant_id = a.tenant_id
-  RETURNING id
-),
-tm_beta_owner AS (
-  INSERT INTO tenant_membership (tenant_id, user_id, role, client_id)
-  SELECT b.tenant_id,
-         (SELECT id FROM u WHERE email='owner@beta.com'),
-         'OWNER',
-         c.client_id
-  FROM t_beta b JOIN c_beta c ON c.tenant_id = b.tenant_id
-  RETURNING id
-),
+-- TENANT MEMBERSHIP
+CREATE TABLE IF NOT EXISTS tenant_membership (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id uuid NOT NULL REFERENCES tenant(id) ON DELETE CASCADE,
+  user_id uuid NOT NULL REFERENCES "user"(id) ON DELETE CASCADE,
+  role tenant_role NOT NULL,
+  client_id uuid NULL, -- optional default client context
+  created_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (tenant_id, user_id)
+);
+-- ensure optional client belongs to same tenant
+ALTER TABLE tenant_membership
+  DROP CONSTRAINT IF EXISTS tenant_membership_client_fk,
+  ADD CONSTRAINT tenant_membership_client_fk
+  FOREIGN KEY (tenant_id, client_id)
+  REFERENCES client_company(tenant_id, id)
+  ON DELETE SET NULL;
 
--- User ↔ Client maps (who can access which client)
-ucm_acme_user_dataclient AS (
-  INSERT INTO user_client_map (tenant_id, user_id, client_id)
-  SELECT a.tenant_id,
-         (SELECT id FROM u WHERE email='user@acme.com'),
-         c.client_id
-  FROM t_acme a JOIN c_acme c ON c.tenant_id = a.tenant_id
-  RETURNING id
-),
+-- USER ↔ CLIENT (scoped by tenant)
+CREATE TABLE IF NOT EXISTS user_client_map (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id uuid NOT NULL REFERENCES tenant(id) ON DELETE CASCADE,
+  user_id uuid NOT NULL REFERENCES "user"(id) ON DELETE CASCADE,
+  client_id uuid NOT NULL,
+  UNIQUE (tenant_id, user_id, client_id)
+);
+ALTER TABLE user_client_map
+  DROP CONSTRAINT IF EXISTS user_client_client_fk,
+  ADD CONSTRAINT user_client_client_fk
+  FOREIGN KEY (tenant_id, client_id)
+  REFERENCES client_company(tenant_id, id)
+  ON DELETE CASCADE;
 
--- Projects
-p_acme_mdash AS (
-  INSERT INTO project (tenant_id, client_id, name, code)
-  SELECT a.tenant_id, c.client_id, 'Marketing Dashboard', 'MDASH'
-  FROM t_acme a JOIN c_acme c ON c.tenant_id = a.tenant_id
-  RETURNING id AS project_id, tenant_id, client_id
-),
-p_beta_site AS (
-  INSERT INTO project (tenant_id, client_id, name, code)
-  SELECT b.tenant_id, c.client_id, 'Website Revamp', 'WSITE'
-  FROM t_beta b JOIN c_beta c ON c.tenant_id = b.tenant_id
-  RETURNING id AS project_id, tenant_id, client_id
-),
+-- PROJECT
+CREATE TABLE IF NOT EXISTS project (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id uuid NOT NULL REFERENCES tenant(id) ON DELETE CASCADE,
+  client_id uuid NOT NULL,
+  name text NOT NULL,
+  code varchar NOT NULL,
+  active boolean NOT NULL DEFAULT true,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (tenant_id, client_id, code)
+);
+ALTER TABLE project
+  DROP CONSTRAINT IF EXISTS project_client_fk,
+  ADD CONSTRAINT project_client_fk
+  FOREIGN KEY (tenant_id, client_id)
+  REFERENCES client_company(tenant_id, id)
+  ON DELETE CASCADE;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_project_tenant_id_id
+  ON project(tenant_id, id);
 
--- Project streams
-s_acme_frontend AS (
-  INSERT INTO project_stream (tenant_id, project_id, name)
-  SELECT tenant_id, project_id, 'Frontend Tasks' FROM p_acme_mdash
-  RETURNING id AS stream_id, tenant_id, project_id
-),
-s_acme_backend AS (
-  INSERT INTO project_stream (tenant_id, project_id, name)
-  SELECT tenant_id, project_id, 'Backend Tasks' FROM p_acme_mdash
-  RETURNING id AS stream_id, tenant_id, project_id
-),
-s_beta_design AS (
-  INSERT INTO project_stream (tenant_id, project_id, name)
-  SELECT tenant_id, project_id, 'Design' FROM p_beta_site
-  RETURNING id AS stream_id, tenant_id, project_id
-),
+-- PROJECT STREAM
+CREATE TABLE IF NOT EXISTS project_stream (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id uuid NOT NULL REFERENCES tenant(id) ON DELETE CASCADE,
+  project_id uuid NOT NULL,
+  name text NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (tenant_id, project_id, name)
+);
+ALTER TABLE project_stream
+  DROP CONSTRAINT IF EXISTS project_stream_project_fk,
+  ADD CONSTRAINT project_stream_project_fk
+  FOREIGN KEY (tenant_id, project_id)
+  REFERENCES project(tenant_id, id)
+  ON DELETE CASCADE;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_project_stream_tenant_id_id
+  ON project_stream(tenant_id, id);
 
--- Tags (scoped per tenant/client; unique via expression index)
-tag_bugfix AS (
-  INSERT INTO ticket_tag (tenant_id, client_id, name, color)
-  SELECT a.tenant_id, c.client_id, 'bugfix', '#FF0000'
-  FROM t_acme a JOIN c_acme c ON c.tenant_id = a.tenant_id
-  RETURNING id AS tag_id, tenant_id
-),
-tag_perf AS (
-  INSERT INTO ticket_tag (tenant_id, client_id, name, color)
-  SELECT a.tenant_id, c.client_id, 'performance', '#FF9900'
-  FROM t_acme a JOIN c_acme c ON c.tenant_id = a.tenant_id
-  RETURNING id AS tag_id, tenant_id
-),
+-- TICKET TAG  (expression-based uniqueness via index)
+CREATE TABLE IF NOT EXISTS ticket_tag (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id uuid NOT NULL REFERENCES tenant(id) ON DELETE CASCADE,
+  client_id uuid NULL,
+  name text NOT NULL,
+  color varchar NOT NULL
+);
+-- tenant + (client or global) + name unique
+CREATE UNIQUE INDEX IF NOT EXISTS uq_ticket_tag_scope_name
+  ON ticket_tag (
+    tenant_id,
+    COALESCE(client_id, '00000000-0000-0000-0000-000000000000'::uuid),
+    name
+  );
+-- case-insensitive alternative (uncomment to enforce lower(name) uniqueness)
+-- CREATE UNIQUE INDEX IF NOT EXISTS uq_ticket_tag_scope_name_ci
+--   ON ticket_tag (
+--     tenant_id,
+--     COALESCE(client_id, '00000000-0000-0000-0000-000000000000'::uuid),
+--     lower(name)
+--   );
+ALTER TABLE ticket_tag
+  DROP CONSTRAINT IF EXISTS ticket_tag_client_fk,
+  ADD CONSTRAINT ticket_tag_client_fk
+  FOREIGN KEY (tenant_id, client_id)
+  REFERENCES client_company(tenant_id, id)
+  ON DELETE SET NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_ticket_tag_tenant_id_id
+  ON ticket_tag(tenant_id, id);
 
--- Tickets (Acme)
-tk1 AS (
-  INSERT INTO ticket (
-    tenant_id, client_id, project_id, stream_id,
-    reporter_id, assignee_id, title, description_md,
-    status, priority, type, points
-  )
-  SELECT
-    p.tenant_id, p.client_id, p.project_id, s.stream_id,
-    (SELECT id FROM u WHERE email='admin@acme.com'),
-    (SELECT id FROM u WHERE email='user@acme.com'),
-    'Fix dashboard load issue',
-    '### Steps to Reproduce
-- Login
-- Open dashboard
-- Observe slowness',
-    'TODO', 'P1', 'BUG', 5
-  FROM p_acme_mdash p
-  JOIN s_acme_frontend s ON s.project_id = p.project_id
-  RETURNING id AS ticket_id, tenant_id
-),
-tk2 AS (
-  INSERT INTO ticket (
-    tenant_id, client_id, project_id, stream_id,
-    reporter_id, assignee_id, title, description_md,
-    status, priority, type, points
-  )
-  SELECT
-    p.tenant_id, p.client_id, p.project_id, s.stream_id,
-    (SELECT id FROM u WHERE email='user@acme.com'),
-    (SELECT id FROM u WHERE email='admin@acme.com'),
-    'Optimize API response',
-    'Return only required fields; add pagination & caching.',
-    'IN_PROGRESS', 'P2', 'TASK', 3
-  FROM p_acme_mdash p
-  JOIN s_acme_backend s ON s.project_id = p.project_id
-  RETURNING id AS ticket_id, tenant_id
-),
+-- TICKET
+CREATE TABLE IF NOT EXISTS ticket (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id uuid NOT NULL REFERENCES tenant(id) ON DELETE CASCADE,
+  client_id uuid NOT NULL,
+  project_id uuid NOT NULL,
+  stream_id uuid NULL,
+  reporter_id uuid NOT NULL REFERENCES "user"(id) ON DELETE RESTRICT,
+  assignee_id uuid NULL   REFERENCES "user"(id) ON DELETE SET NULL,
+  title varchar NOT NULL,
+  description_md text NOT NULL DEFAULT '',
+  status ticket_status NOT NULL DEFAULT 'BACKLOG',
+  priority ticket_priority NOT NULL DEFAULT 'P2',
+  type ticket_type NOT NULL DEFAULT 'TASK',
+  points integer,
+  due_date timestamptz,
+  archived_at timestamptz,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+ALTER TABLE ticket
+  DROP CONSTRAINT IF EXISTS ticket_client_fk,
+  ADD CONSTRAINT ticket_client_fk
+  FOREIGN KEY (tenant_id, client_id)
+  REFERENCES client_company(tenant_id, id)
+  ON DELETE CASCADE;
+ALTER TABLE ticket
+  DROP CONSTRAINT IF EXISTS ticket_project_fk,
+  ADD CONSTRAINT ticket_project_fk
+  FOREIGN KEY (tenant_id, project_id)
+  REFERENCES project(tenant_id, id)
+  ON DELETE CASCADE;
+ALTER TABLE ticket
+  DROP CONSTRAINT IF EXISTS ticket_stream_fk,
+  ADD CONSTRAINT ticket_stream_fk
+  FOREIGN KEY (tenant_id, stream_id)
+  REFERENCES project_stream(tenant_id, id)
+  ON DELETE SET NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_ticket_tenant_id_id
+  ON ticket(tenant_id, id);
 
--- Ticket ↔ Tag maps
-ttm1 AS (
-  INSERT INTO ticket_tag_map (ticket_id, tag_id, tenant_id)
-  SELECT tk.ticket_id, tb.tag_id, tk.tenant_id
-  FROM tk1 tk CROSS JOIN tag_bugfix tb
-  RETURNING ticket_id
-),
-ttm2 AS (
-  INSERT INTO ticket_tag_map (ticket_id, tag_id, tenant_id)
-  SELECT tk.ticket_id, tp.tag_id, tk.tenant_id
-  FROM tk2 tk CROSS JOIN tag_perf tp
-  RETURNING ticket_id
-),
+-- TAG MAP
+CREATE TABLE IF NOT EXISTS ticket_tag_map (
+  ticket_id uuid NOT NULL,
+  tag_id uuid NOT NULL,
+  tenant_id uuid NOT NULL REFERENCES tenant(id) ON DELETE CASCADE,
+  PRIMARY KEY (ticket_id, tag_id)
+);
+ALTER TABLE ticket_tag_map
+  DROP CONSTRAINT IF EXISTS ttm_ticket_fk,
+  ADD CONSTRAINT ttm_ticket_fk
+  FOREIGN KEY (tenant_id, ticket_id)
+  REFERENCES ticket(tenant_id, id)
+  ON DELETE CASCADE;
+ALTER TABLE ticket_tag_map
+  DROP CONSTRAINT IF EXISTS ttm_tag_fk,
+  ADD CONSTRAINT ttm_tag_fk
+  FOREIGN KEY (tenant_id, tag_id)
+  REFERENCES ticket_tag(tenant_id, id)
+  ON DELETE CASCADE;
 
--- Comments
-cmt1 AS (
-  INSERT INTO comment (tenant_id, ticket_id, author_id, body_md)
-  SELECT tk.tenant_id, tk.ticket_id, (SELECT id FROM u WHERE email='user@acme.com'),
-         'This seems to happen only on Chrome 118+.'
-  FROM tk1 tk
-  RETURNING id
-),
-cmt2 AS (
-  INSERT INTO comment (tenant_id, ticket_id, author_id, body_md)
-  SELECT tk.tenant_id, tk.ticket_id, (SELECT id FROM u WHERE email='admin@acme.com'),
-         'Profiling suggests DB query N+1; will add a join + index.'
-  FROM tk2 tk
-  RETURNING id
-)
+-- COMMENT
+CREATE TABLE IF NOT EXISTS comment (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id uuid NOT NULL REFERENCES tenant(id) ON DELETE CASCADE,
+  ticket_id uuid NOT NULL,
+  author_id uuid NOT NULL REFERENCES "user"(id) ON DELETE CASCADE,
+  body_md text NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+ALTER TABLE comment
+  DROP CONSTRAINT IF EXISTS comment_ticket_fk,
+  ADD CONSTRAINT comment_ticket_fk
+  FOREIGN KEY (tenant_id, ticket_id)
+  REFERENCES ticket(tenant_id, id)
+  ON DELETE CASCADE;
 
--- Attachments (final INSERTs outside CTE chain for clarity)
-INSERT INTO attachment (tenant_id, ticket_id, uploader_id, filename, mime, size, s3_key)
-SELECT tk.tenant_id, tk.ticket_id, (SELECT id FROM u WHERE email='user@acme.com'),
-       'screenshot.png', 'image/png', 204800, 'attachments/screenshot.png'
-FROM tk1 tk;
+-- ATTACHMENT
+CREATE TABLE IF NOT EXISTS attachment (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id uuid NOT NULL REFERENCES tenant(id) ON DELETE CASCADE,
+  ticket_id uuid NOT NULL,
+  uploader_id uuid NOT NULL REFERENCES "user"(id) ON DELETE CASCADE,
+  filename text NOT NULL,
+  mime text NOT NULL,
+  size integer NOT NULL CHECK (size >= 0),
+  s3_key text NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+ALTER TABLE attachment
+  DROP CONSTRAINT IF EXISTS attachment_ticket_fk,
+  ADD CONSTRAINT attachment_ticket_fk
+  FOREIGN KEY (tenant_id, ticket_id)
+  REFERENCES ticket(tenant_id, id)
+  ON DELETE CASCADE;
 
-INSERT INTO attachment (tenant_id, ticket_id, uploader_id, filename, mime, size, s3_key)
-SELECT tk.tenant_id, tk.ticket_id, (SELECT id FROM u WHERE email='admin@acme.com'),
-       'profile.json', 'application/json', 5120, 'attachments/profile.json'
-FROM tk2 tk;
+-- ============================================
+-- Indexes for performance
+-- ============================================
+
+-- Users
+CREATE INDEX IF NOT EXISTS idx_user_email_lower ON "user"(lower(email));
+
+-- Client company
+CREATE INDEX IF NOT EXISTS idx_client_company_tenant_name
+  ON client_company(tenant_id, lower(name));
+
+-- Project / stream
+CREATE INDEX IF NOT EXISTS idx_project_code
+  ON project(tenant_id, client_id, code);
+CREATE INDEX IF NOT EXISTS idx_stream_name
+  ON project_stream(tenant_id, project_id, name);
+
+-- Tickets
+CREATE INDEX IF NOT EXISTS idx_ticket_status      ON ticket(tenant_id, status);
+CREATE INDEX IF NOT EXISTS idx_ticket_priority    ON ticket(tenant_id, priority);
+CREATE INDEX IF NOT EXISTS idx_ticket_due_date    ON ticket(tenant_id, due_date);
+CREATE INDEX IF NOT EXISTS idx_ticket_assignee_t  ON ticket(tenant_id, assignee_id);
+CREATE INDEX IF NOT EXISTS idx_ticket_created_at  ON ticket(tenant_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_ticket_project     ON ticket(project_id);
+CREATE INDEX IF NOT EXISTS idx_ticket_stream      ON ticket(stream_id);
+
+-- Tags & maps
+CREATE INDEX IF NOT EXISTS idx_tagmap_ticket ON ticket_tag_map(ticket_id);
+-- If you expect case-insensitive tag lookups, also:
+CREATE INDEX IF NOT EXISTS idx_ticket_tag_scope_name_search
+  ON ticket_tag(tenant_id, COALESCE(client_id, '00000000-0000-0000-0000-000000000000'::uuid), lower(name));
+
+-- Comments / Attachments
+CREATE INDEX IF NOT EXISTS idx_comment_ticket ON comment(ticket_id);
+CREATE INDEX IF NOT EXISTS idx_attachment_ticket ON attachment(ticket_id);
+
+-- ============================================
+-- updated_at triggers
+-- ============================================
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_trigger WHERE tgname='trg_tenant_updated_at'
+  ) THEN
+    CREATE TRIGGER trg_tenant_updated_at BEFORE UPDATE ON tenant
+      FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_trigger WHERE tgname='trg_user_updated_at'
+  ) THEN
+    CREATE TRIGGER trg_user_updated_at BEFORE UPDATE ON "user"
+      FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_trigger WHERE tgname='trg_client_company_updated_at'
+  ) THEN
+    CREATE TRIGGER trg_client_company_updated_at BEFORE UPDATE ON client_company
+      FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_trigger WHERE tgname='trg_project_updated_at'
+  ) THEN
+    CREATE TRIGGER trg_project_updated_at BEFORE UPDATE ON project
+      FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_trigger WHERE tgname='trg_project_stream_updated_at'
+  ) THEN
+    CREATE TRIGGER trg_project_stream_updated_at BEFORE UPDATE ON project_stream
+      FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_trigger WHERE tgname='trg_ticket_updated_at'
+  ) THEN
+    CREATE TRIGGER trg_ticket_updated_at BEFORE UPDATE ON ticket
+      FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+  END IF;
+END $$;
 
 COMMIT;
-
--- (Optional) Quick sanity checks:
--- SELECT * FROM tenant;
--- SELECT email, id FROM "user";
--- SELECT tenant_id, name FROM client_company;
--- SELECT tenant_id, user_id, role FROM tenant_membership;
--- SELECT tenant_id, client_id, name, code FROM project;
--- SELECT tenant_id, project_id, name FROM project_stream;
--- SELECT title, status, priority FROM ticket ORDER BY created_at DESC;
--- SELECT name, color FROM ticket_tag;
--- SELECT * FROM ticket_tag_map;
--- SELECT * FROM comment;
--- SELECT * FROM attachment;
