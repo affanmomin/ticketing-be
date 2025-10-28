@@ -8,19 +8,19 @@ export async function listTickets(tx: PoolClient, filter: TicketFilterQueryT) {
   const params: any[] = [];
   let i = 1;
   if (filter.clientId) {
-    where.push(`"clientId" = $${i++}`);
+    where.push(`client_id = $${i++}`);
     params.push(filter.clientId);
   }
   if (filter.projectId) {
-    where.push(`"projectId" = $${i++}`);
+    where.push(`project_id = $${i++}`);
     params.push(filter.projectId);
   }
   if (filter.streamId) {
-    where.push(`"streamId" = $${i++}`);
+    where.push(`stream_id = $${i++}`);
     params.push(filter.streamId);
   }
   if (filter.assigneeId) {
-    where.push(`"assigneeId" = $${i++}`);
+    where.push(`assignee_id = $${i++}`);
     params.push(filter.assigneeId);
   }
   if (filter.status?.length) {
@@ -28,14 +28,17 @@ export async function listTickets(tx: PoolClient, filter: TicketFilterQueryT) {
     params.push(filter.status);
   }
   if (filter.search) {
-    where.push(`(title ilike $${i++} or "descriptionMd" ilike $${i++})`);
+    where.push(`(title ilike $${i++} or description_md ilike $${i++})`);
     params.push(`%${filter.search}%`, `%${filter.search}%`);
   }
 
   const sql = `
-    select * from "Ticket"
+    select id, tenant_id as "tenantId", client_id as "clientId", project_id as "projectId", stream_id as "streamId",
+           reporter_id as "reporterId", assignee_id as "assigneeId", title, description_md as "descriptionMd", status,
+           priority, type, points, due_date as "dueDate", archived_at as "archivedAt", created_at as "createdAt", updated_at as "updatedAt"
+    from ticket
     ${where.length ? 'where ' + where.join(' and ') : ''}
-    order by "updatedAt" desc
+    order by updated_at desc
     limit ${filter.limit} offset ${filter.offset};
   `;
   const { rows } = await tx.query(sql, params);
@@ -43,7 +46,13 @@ export async function listTickets(tx: PoolClient, filter: TicketFilterQueryT) {
 }
 
 export async function getTicket(tx: PoolClient, id: string) {
-  const { rows } = await tx.query(`select * from "Ticket" where id = $1`, [id]);
+  const { rows } = await tx.query(
+    `select id, tenant_id as "tenantId", client_id as "clientId", project_id as "projectId", stream_id as "streamId",
+            reporter_id as "reporterId", assignee_id as "assigneeId", title, description_md as "descriptionMd", status,
+            priority, type, points, due_date as "dueDate", archived_at as "archivedAt", created_at as "createdAt", updated_at as "updatedAt"
+     from ticket where id = $1`,
+    [id],
+  );
   if (!rows[0]) throw notFound('Ticket not found');
   return rows[0];
 }
@@ -66,12 +75,14 @@ export async function createTicket(tx: PoolClient, body: CreateTicketBodyT, ctx:
   ];
   const { rows } = await tx.query(
     `
-    insert into "Ticket" (
-      id, "tenantId","clientId","projectId","streamId","reporterId","assigneeId",
-      title,"descriptionMd", status, priority, type, points,"dueDate"
+    insert into ticket (
+      id, tenant_id, client_id, project_id, stream_id, reporter_id, assignee_id,
+      title, description_md, status, priority, type, points, due_date
     ) values (
       gen_random_uuid(), $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13
-    ) returning *;
+    ) returning id, tenant_id as "tenantId", client_id as "clientId", project_id as "projectId", stream_id as "streamId",
+              reporter_id as "reporterId", assignee_id as "assigneeId", title, description_md as "descriptionMd", status,
+              priority, type, points, due_date as "dueDate", archived_at as "archivedAt", created_at as "createdAt", updated_at as "updatedAt";
   `,
     params,
   );
@@ -79,7 +90,7 @@ export async function createTicket(tx: PoolClient, body: CreateTicketBodyT, ctx:
 
   if (body.tagIds?.length) {
     await tx.query(
-      `insert into "TicketTagMap" ("ticketId","tagId","tenantId")
+      `insert into ticket_tag_map (ticket_id, tag_id, tenant_id)
                     select $1, unnest($2::uuid[]), $3`,
       [ticket.id, body.tagIds, ctx.tenantId],
     );
@@ -104,30 +115,32 @@ export async function updateTicket(tx: PoolClient, body: UpdateTicketBodyT, role
   ];
   const { rows } = await tx.query(
     `
-    update "Ticket" set
+    update ticket set
       title = coalesce($2, title),
-      "descriptionMd" = coalesce($3, "descriptionMd"),
+      description_md = coalesce($3, description_md),
       status = coalesce($4, status),
       priority = coalesce($5, priority),
       type = coalesce($6, type),
-      "assigneeId" = $7,
-      "streamId" = $8,
-      "dueDate" = $9,
+      assignee_id = $7,
+      stream_id = $8,
+      due_date = $9,
       points = $10,
-      "updatedAt" = now()
+      updated_at = now()
     where id = $1
-    returning *;
+    returning id, tenant_id as "tenantId", client_id as "clientId", project_id as "projectId", stream_id as "streamId",
+              reporter_id as "reporterId", assignee_id as "assigneeId", title, description_md as "descriptionMd", status,
+              priority, type, points, due_date as "dueDate", archived_at as "archivedAt", created_at as "createdAt", updated_at as "updatedAt";
   `,
     params,
   );
   if (!rows[0]) throw notFound('Ticket not found');
 
   if (body.tagIds) {
-    await tx.query(`delete from "TicketTagMap" where "ticketId" = $1`, [body.id]);
+    await tx.query(`delete from ticket_tag_map where ticket_id = $1`, [body.id]);
     if (body.tagIds.length) {
       await tx.query(
-        `insert into "TicketTagMap" ("ticketId","tagId","tenantId")
-                      select $1, unnest($2::uuid[]), "tenantId" from "Ticket" where id=$1`,
+        `insert into ticket_tag_map (ticket_id, tag_id, tenant_id)
+                      select $1, unnest($2::uuid[]), tenant_id from ticket where id=$1`,
         [body.id, body.tagIds],
       );
     }

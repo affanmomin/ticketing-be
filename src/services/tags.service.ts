@@ -2,17 +2,21 @@ import { PoolClient } from 'pg';
 import { CreateTagBodyT } from '../schemas/tags.schema';
 
 export async function listTags(tx: PoolClient, clientId?: string) {
-  const where = clientId ? `where "clientId"=$1 or "clientId" is null` : '';
+  const where = clientId ? `where client_id=$1 or client_id is null` : '';
   const params = clientId ? [clientId] : [] as any[];
-  const { rows } = await tx.query(`select * from "TicketTag" ${where} order by name asc`, params);
+  const { rows } = await tx.query(
+    `select id, tenant_id as "tenantId", client_id as "clientId", name, color from ticket_tag ${where} order by name asc`,
+    params,
+  );
   return rows;
 }
 
 export async function createTag(tx: PoolClient, body: CreateTagBodyT, tenantId: string) {
   const { rows } = await tx.query(
     `
-    insert into "TicketTag"(id,"tenantId","clientId",name,color)
-    values (gen_random_uuid(),$1,$2,$3,$4) returning *
+    insert into ticket_tag(id,tenant_id,client_id,name,color)
+    values (gen_random_uuid(),$1,$2,$3,$4)
+    returning id, tenant_id as "tenantId", client_id as "clientId", name, color
   `,
     [tenantId, body.clientId ?? null, body.name, body.color],
   );
@@ -20,7 +24,7 @@ export async function createTag(tx: PoolClient, body: CreateTagBodyT, tenantId: 
 }
 
 export async function deleteTag(tx: PoolClient, id: string) {
-  await tx.query(`delete from "TicketTagMap" where "tagId"=$1`, [id]);
-  await tx.query(`delete from "TicketTag" where id=$1`, [id]);
+  await tx.query(`delete from ticket_tag_map where tag_id=$1`, [id]);
+  await tx.query(`delete from ticket_tag where id=$1`, [id]);
   return { ok: true };
 }
