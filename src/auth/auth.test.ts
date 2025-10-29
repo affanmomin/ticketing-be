@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import request from 'supertest';
 import server from '../server';
 
-const EMAIL = process.env.ADMIN_EMAIL || 'admin@example.com';
-const PASSWORD = process.env.ADMIN_PASSWORD || 'secret123';
+const EMAIL = process.env.ADMIN_EMAIL || 'admin@acme.com';
+const PASSWORD = process.env.ADMIN_PASSWORD || 'adminpassword';
 
 describe('Auth flow', () => {
   before(async () => {

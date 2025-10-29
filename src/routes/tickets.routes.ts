@@ -5,5 +5,5 @@ export default async function ticketsRoutes(app: FastifyInstance) {
   app.get('/tickets', getTicketsCtrl);
   app.get('/tickets/:id', getTicketCtrl);
   app.post('/tickets', createTicketCtrl);
-  app.patch('/tickets/:id', updateTicketCtrl);
+  app.post('/tickets-update/:id', updateTicketCtrl);
 }

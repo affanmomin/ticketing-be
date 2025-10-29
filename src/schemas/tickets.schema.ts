@@ -31,7 +31,7 @@ export const CreateTicketBody = z.object({
 });
 
 export const UpdateTicketBody = CreateTicketBody.partial().and(
-  z.object({ id: z.string().uuid(), status: Status.optional() }),
+  z.object({ id: z.string(), status: Status.optional() }),
 );
 
 export type TicketFilterQueryT = z.infer<typeof TicketFilterQuery>;

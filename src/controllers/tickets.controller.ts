@@ -25,6 +25,5 @@ export async function createTicketCtrl(req: FastifyRequest, reply: FastifyReply)
 
 export async function updateTicketCtrl(req: FastifyRequest, reply: FastifyReply) {
   const id = (req.params as any).id as string;
-  const body = UpdateTicketBody.parse({ ...(req.body as any), id });
-  return withRlsTx(req, async (tx) => reply.send(await updateTicket(tx, body, req.auth!.role)));
+  return withRlsTx(req, async (tx) => reply.send(await updateTicket(tx, { ...(req.body as any), id }, req.auth!.role)));
 }

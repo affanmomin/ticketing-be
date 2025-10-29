@@ -33,3 +33,9 @@ export async function loginCtrl(req: FastifyRequest, reply: FastifyReply) {
 export async function meCtrl(req: FastifyRequest, reply: FastifyReply) {
   return reply.send({ user: req.auth });
 }
+
+export async function logoutCtrl(_req: FastifyRequest, reply: FastifyReply) {
+  // With stateless JWTs, server-side signout is a no-op unless we maintain a revocation list.
+  // This endpoint exists so clients can call it and then delete their token locally.
+  return reply.send({ ok: true });
+}
