@@ -4,5 +4,5 @@ import { listStreamsCtrl, createStreamCtrl, updateStreamCtrl } from '../controll
 export default async function streamsRoutes(app: FastifyInstance) {
   app.get('/streams', listStreamsCtrl);
   app.post('/streams', createStreamCtrl);
-  app.patch('/streams/:id', updateStreamCtrl);
+  app.post('/streams-update/:id', updateStreamCtrl);
 }
