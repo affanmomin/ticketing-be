@@ -1,7 +1,8 @@
 import { FastifyRequest, FastifyReply } from 'fastify';
 import { LoginBody } from '../schemas/auth.schema';
 import { pool } from '../db/pool';
-import { verifyLogin } from '../services/auth.service';
+import { verifyLogin, getUserDashboardStats } from '../services/auth.service';
+import { withRlsTx } from '../db/rls';
 
 export async function loginCtrl(req: FastifyRequest, reply: FastifyReply) {
   const body = LoginBody.parse(req.body);
@@ -31,7 +32,19 @@ export async function loginCtrl(req: FastifyRequest, reply: FastifyReply) {
 }
 
 export async function meCtrl(req: FastifyRequest, reply: FastifyReply) {
-  return reply.send({ user: req.auth });
+  return withRlsTx(req, async (tx) => {
+    const dashboardStats = await getUserDashboardStats(
+      tx,
+      req.auth!.tenantId,
+      req.auth!.role,
+      req.auth!.clientId ?? null
+    );
+    
+    return reply.send({
+      user: req.auth,
+      dashboard: dashboardStats,
+    });
+  });
 }
 
 export async function logoutCtrl(_req: FastifyRequest, reply: FastifyReply) {

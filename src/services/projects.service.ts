@@ -23,12 +23,69 @@ export async function createProject(tx: PoolClient, body: CreateProjectBodyT, te
 }
 
 export async function getProject(tx: PoolClient, id: string) {
-  const { rows } = await tx.query(
+  // Get project details
+  const { rows: projectRows } = await tx.query(
     `select id, tenant_id as "tenantId", client_id as "clientId", name, code, active, created_at as "createdAt", updated_at as "updatedAt"
      from project where id=$1`,
     [id],
   );
-  return rows[0] ?? null;
+  
+  if (!projectRows[0]) return null;
+  
+  const project = projectRows[0];
+
+  // Get all streams for this project
+  const { rows: streams } = await tx.query(
+    `select id, tenant_id as "tenantId", project_id as "projectId", name, created_at as "createdAt", updated_at as "updatedAt"
+     from project_stream where project_id=$1 order by created_at desc`,
+    [id],
+  );
+
+  // Get all tickets for this project with assignee and reporter details
+  const { rows: tickets } = await tx.query(
+    `select 
+      t.id, 
+      t.tenant_id as "tenantId", 
+      t.client_id as "clientId", 
+      t.project_id as "projectId", 
+      t.stream_id as "streamId",
+      t.reporter_id as "reporterId", 
+      t.assignee_id as "assigneeId", 
+      t.title, 
+      t.description_md as "descriptionMd", 
+      t.status,
+      t.priority, 
+      t.type, 
+      t.points, 
+      t.due_date as "dueDate", 
+      t.archived_at as "archivedAt", 
+      t.created_at as "createdAt", 
+      t.updated_at as "updatedAt",
+      json_build_object(
+        'id', assignee.id,
+        'name', assignee.name,
+        'email', assignee.email,
+        'userType', assignee.user_type
+      ) as assignee,
+      json_build_object(
+        'id', reporter.id,
+        'name', reporter.name,
+        'email', reporter.email,
+        'userType', reporter.user_type
+      ) as reporter
+     from ticket t
+     left join "user" assignee on t.assignee_id = assignee.id
+     left join "user" reporter on t.reporter_id = reporter.id
+     where t.project_id=$1 
+     order by t.updated_at desc`,
+    [id],
+  );
+
+  return {
+    ...project,
+    streams,
+    tickets,
+  };
 }
 
 export async function updateProject(tx: PoolClient, id: string, body: UpdateProjectBodyT) {

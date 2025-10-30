@@ -35,6 +35,7 @@ export async function createUserCtrl(req: FastifyRequest, reply: FastifyReply) {
 
   return withRlsTx(req, async (tx) => {
     const user = await createUser(tx, body, tenantId);
+    
     return reply.code(201).send(user);
   });
 }
