@@ -27,7 +27,7 @@ export async function createUser(tx: PoolClient, body: CreateUserBodyT, tenantId
   // Hash password
   const passwordHash = await bcrypt.hash(body.password, 10);
 
-  const userType = body.userType || 'EMPLOYEE';
+  const userType = body.userType || 'MEMBER';
 
   // Insert user with tenant_id and optional client_company_id
   const { rows } = await tx.query(
@@ -51,7 +51,7 @@ export async function createUser(tx: PoolClient, body: CreateUserBodyT, tenantId
 
   // Create tenant_membership entry with role matching user_type
   await tx.query(
-    `INSERT INTO tenant_membership ("tenantId", "userId", role, "client_id")
+    `INSERT INTO tenant_membership (tenant_id, user_id, role, client_id)
      VALUES ($1, $2, $3, $4)`,
     [tenantId, user.id, userType, body.clientCompanyId || null],
   );
@@ -152,14 +152,12 @@ export async function getUser(tx: PoolClient, userId: string, tenantId: string) 
       u.user_type as "userType",
       u.tenant_id as "tenantId",
       u.client_company_id as "clientCompanyId",
-      cc.name as "clientCompanyName",
       u.active,
       u.last_sign_in_at as "lastSignInAt",
       u.created_at as "createdAt",
       u.updated_at as "updatedAt"
     FROM "user" u
-    INNER JOIN tenant_membership tm ON tm."userId" = u.id AND tm."tenantId" = $2
-    LEFT JOIN client_company cc ON cc.id = u.client_company_id
+    INNER JOIN tenant_membership tm ON tm.user_id = u.id AND tm.tenant_id = $2
     WHERE u.id = $1`,
     [userId, tenantId],
   );
