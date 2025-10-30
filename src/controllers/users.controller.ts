@@ -10,6 +10,7 @@ import {
 } from '../services/users.service';
 import { CreateUserBody, UpdateUserBody, ListUsersQuery } from '../schemas/users.schema';
 import { forbidden } from '../utils/errors';
+import { emailService } from '../services/email.service';
 
 /**
  * GET /users/assignable?clientId=xxx
@@ -35,6 +36,19 @@ export async function createUserCtrl(req: FastifyRequest, reply: FastifyReply) {
 
   return withRlsTx(req, async (tx) => {
     const user = await createUser(tx, body, tenantId);
+    
+    // Send welcome email after successful user creation
+    // Note: We're not awaiting this to avoid blocking the response
+    // The email service handles errors internally
+    emailService.sendWelcomeEmail({
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      userType: user.userType,
+      password: body.password, // Include original password for auto-fill
+    }).catch(error => {
+      console.error('Failed to send welcome email:', error);
+    });
     
     return reply.code(201).send(user);
   });

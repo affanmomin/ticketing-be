@@ -8,6 +8,7 @@ import {
   deleteUserCtrl,
 } from '../controllers/users.controller';
 
+
 export default async function usersRoutes(app: FastifyInstance) {
   // List assignable users for a client (existing endpoint)
   app.get('/users/assignable', usersAssignableCtrl);
