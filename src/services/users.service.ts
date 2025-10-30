@@ -21,10 +21,13 @@ export async function listAssignableUsers(tx: PoolClient, clientId: string) {
 /**
  * Create a new user (admin creates employee users)
  * Uses new simplified schema with tenant_id and client_company_id directly on user table
+ * Also creates tenant_membership entry
  */
 export async function createUser(tx: PoolClient, body: CreateUserBodyT, tenantId: string) {
   // Hash password
   const passwordHash = await bcrypt.hash(body.password, 10);
+
+  const userType = body.userType || 'EMPLOYEE';
 
   // Insert user with tenant_id and optional client_company_id
   const { rows } = await tx.query(
@@ -37,14 +40,23 @@ export async function createUser(tx: PoolClient, body: CreateUserBodyT, tenantId
       body.email.toLowerCase(),
       body.name,
       passwordHash,
-      body.userType || 'EMPLOYEE',
+      userType,
       tenantId,
       body.clientCompanyId || null,
       body.active ?? true,
     ],
   );
 
-  return rows[0];
+  const user = rows[0];
+
+  // Create tenant_membership entry with role matching user_type
+  await tx.query(
+    `INSERT INTO tenant_membership ("tenantId", "userId", role, "client_id")
+     VALUES ($1, $2, $3, $4)`,
+    [tenantId, user.id, userType, body.clientCompanyId || null],
+  );
+
+  return user;
 }
 
 /**
@@ -129,7 +141,7 @@ export async function listUsers(tx: PoolClient, query: ListUsersQueryT, tenantId
 
 /**
  * Get a single user by ID
- * Simplified to query user table directly
+ * Checks tenant_membership to verify user belongs to tenant
  */
 export async function getUser(tx: PoolClient, userId: string, tenantId: string) {
   const { rows } = await tx.query(
@@ -146,13 +158,14 @@ export async function getUser(tx: PoolClient, userId: string, tenantId: string) 
       u.created_at as "createdAt",
       u.updated_at as "updatedAt"
     FROM "user" u
+    INNER JOIN tenant_membership tm ON tm."userId" = u.id AND tm."tenantId" = $2
     LEFT JOIN client_company cc ON cc.id = u.client_company_id
-    WHERE u.id = $1 AND u.tenant_id = $2`,
+    WHERE u.id = $1`,
     [userId, tenantId],
   );
 
   if (rows.length === 0) {
-    throw notFound('User not found');
+    throw notFound('User not found or not a member of this tenant');
   }
 
   return rows[0];

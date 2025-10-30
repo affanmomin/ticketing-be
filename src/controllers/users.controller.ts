@@ -32,10 +32,10 @@ export async function createUserCtrl(req: FastifyRequest, reply: FastifyReply) {
   }
 
   const body = CreateUserBody.parse(req.body);
-  const tenantId = req.auth.tenantId;
+  // Use the tenantId from the body (which should match the authenticated user's tenant for security)
 
   return withRlsTx(req, async (tx) => {
-    const user = await createUser(tx, body, tenantId);
+    const user = await createUser(tx, body, req.auth!.tenantId);
     
     // Send welcome email after successful user creation
     // Note: We're not awaiting this to avoid blocking the response
@@ -46,6 +46,7 @@ export async function createUserCtrl(req: FastifyRequest, reply: FastifyReply) {
       name: user.name,
       userType: user.userType,
       password: body.password, // Include original password for auto-fill
+      tenantId: req.auth!.tenantId, // Use the same tenantId used for creating the user
     }).catch(error => {
       console.error('Failed to send welcome email:', error);
     });

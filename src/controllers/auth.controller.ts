@@ -6,6 +6,9 @@ import { withRlsTx } from '../db/rls';
 
 export async function loginCtrl(req: FastifyRequest, reply: FastifyReply) {
   const body = LoginBody.parse(req.body);
+  if(body.email === '' || body.password === '' || body.tenantId === '') {
+    return reply.code(400).send({ error: 'Email, password, and tenantId are required' });
+  }
   const client = await pool.connect();
   try {
     await client.query('BEGIN');

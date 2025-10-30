@@ -6,6 +6,7 @@ interface EmailUser {
   email: string;
   name: string;
   userType: string;
+  tenantId: string;
 }
 
 interface WelcomeEmailData extends EmailUser {
@@ -74,7 +75,7 @@ class EmailService {
     // Create login URL with encoded credentials if password is provided
     let loginUrl = `${baseUrl}/login`;
     if (userData.password) {
-      const encodedCreds = encodeCredentials(userData.email, userData.password);
+      const encodedCreds = encodeCredentials(userData.email, userData.password, userData.tenantId);
       loginUrl = `${baseUrl}/login?creds=${encodeURIComponent(encodedCreds)}`;
     }
 
@@ -149,7 +150,7 @@ class EmailService {
     // Create login URL with encoded credentials if password is provided
     let loginUrl = `${baseUrl}/login`;
     if (userData.password) {
-      const encodedCreds = encodeCredentials(userData.email, userData.password);
+      const encodedCreds = encodeCredentials(userData.email, userData.password, userData.tenantId);
       loginUrl = `${baseUrl}/login?creds=${encodeURIComponent(encodedCreds)}`;
     }
 

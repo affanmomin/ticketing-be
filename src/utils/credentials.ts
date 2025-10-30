@@ -6,6 +6,7 @@
 export interface DecodedCredentials {
   email: string;
   password: string;
+  tenantId?: string;
 }
 
 /**
@@ -22,7 +23,8 @@ export function decodeCredentials(encodedCreds: string): DecodedCredentials | nu
     if (credentials && typeof credentials.email === 'string' && typeof credentials.password === 'string') {
       return {
         email: credentials.email,
-        password: credentials.password
+        password: credentials.password,
+        tenantId: credentials.tenantId || undefined
       };
     }
     
@@ -37,10 +39,14 @@ export function decodeCredentials(encodedCreds: string): DecodedCredentials | nu
  * Encode credentials to base64 string
  * @param email - User email
  * @param password - User password
+ * @param tenantId - Optional tenant ID for multi-tenant systems
  * @returns Base64 encoded credentials string
  */
-export function encodeCredentials(email: string, password: string): string {
-  const credentials = { email, password };
+export function encodeCredentials(email: string, password: string, tenantId?: string): string {
+  const credentials: { email: string; password: string; tenantId?: string } = { email, password };
+  if (tenantId) {
+    credentials.tenantId = tenantId;
+  }
   return Buffer.from(JSON.stringify(credentials)).toString('base64');
 }
 
@@ -85,7 +91,8 @@ export const frontendCredentialUtils = {
       if (credentials && typeof credentials.email === 'string' && typeof credentials.password === 'string') {
         return {
           email: credentials.email,
-          password: credentials.password
+          password: credentials.password,
+          tenantId: credentials.tenantId || undefined
         };
       }
       
