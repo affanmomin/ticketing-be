@@ -27,7 +27,7 @@ export async function createUser(tx: PoolClient, body: CreateUserBodyT, tenantId
   // Hash password
   const passwordHash = await bcrypt.hash(body.password, 10);
 
-  const userType = body.userType || 'MEMBER';
+  const userType = body.userType || 'EMPLOYEE';
 
   // Insert user with tenant_id and optional client_company_id
   const { rows } = await tx.query(

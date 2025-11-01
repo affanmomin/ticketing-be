@@ -6,13 +6,11 @@ import { withRlsTx } from '../db/rls';
 
 export async function loginCtrl(req: FastifyRequest, reply: FastifyReply) {
   const body = LoginBody.parse(req.body);
-  if(body.email === '' || body.password === '' || body.tenantId === '') {
-    return reply.code(400).send({ error: 'Email, password, and tenantId are required' });
-  }
+  
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    const ctx = await verifyLogin(client, body.email, body.password, body.tenantId);
+    const ctx = await verifyLogin(client, body.email, body.password, '416f7ce3-3807-4210-81e4-8905c3ca5133');
     await client.query('COMMIT');
     const token = await (req.server as any).jwt.sign({
       sub: ctx.userId,
@@ -36,6 +34,12 @@ export async function loginCtrl(req: FastifyRequest, reply: FastifyReply) {
 
 export async function meCtrl(req: FastifyRequest, reply: FastifyReply) {
   return withRlsTx(req, async (tx) => {
+    // Fetch user's name from database
+    const { rows: userRows } = await tx.query(
+      `SELECT name, email FROM "user" WHERE id = $1`,
+      [req.auth!.userId]
+    );
+    
     const dashboardStats = await getUserDashboardStats(
       tx,
       req.auth!.tenantId,
@@ -44,7 +48,11 @@ export async function meCtrl(req: FastifyRequest, reply: FastifyReply) {
     );
     
     return reply.send({
-      user: req.auth,
+      user: {
+        ...req.auth,
+        name: userRows[0]?.name,
+        email: userRows[0]?.email,
+      },
       dashboard: dashboardStats,
     });
   });
