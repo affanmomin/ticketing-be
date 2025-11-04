@@ -1,269 +1,296 @@
 import { PoolClient } from 'pg';
 import bcrypt from 'bcryptjs';
-import { CreateUserBodyT, UpdateUserBodyT, ListUsersQueryT } from '../schemas/users.schema';
-import { badRequest, notFound } from '../utils/errors';
+import { badRequest, notFound, forbidden } from '../utils/errors';
+import { Role } from '../types/common';
 
-/**
- * List assignable users for a specific client (original function)
- * Updated to use direct client_company_id FK
- */
-export async function listAssignableUsers(tx: PoolClient, clientId: string) {
-  const { rows } = await tx.query(
-    `SELECT u.id, u.name, u.email
-     FROM "user" u
-     WHERE u.client_company_id = $1 AND u.active = true
-     ORDER BY u.name ASC`,
-    [clientId],
-  );
-  return rows;
+export interface ListUsersFilter {
+  userType?: Role;
+  search?: string;
+  isActive?: boolean;
+}
+
+export interface ListUsersResult {
+  id: string;
+  organizationId: string;
+  clientId: string | null;
+  userType: Role;
+  email: string;
+  fullName: string;
+  isActive: boolean;
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 /**
- * Create a new user (admin creates employee users)
- * Uses new simplified schema with tenant_id and client_company_id directly on user table
- * Also creates tenant_membership entry
+ * List users within an organization (ADMIN/EMPLOYEE only)
+ * For ADMIN: lists all internal users (ADMIN + EMPLOYEE) and CLIENT users
+ * For EMPLOYEE: lists other EMPLOYEEs and CLIENTs in same org
  */
-export async function createUser(tx: PoolClient, body: CreateUserBodyT, tenantId: string) {
-  // Hash password
-  const passwordHash = await bcrypt.hash(body.password, 10);
-
-  const userType = body.userType || 'EMPLOYEE';
-
-  // Insert user with tenant_id and optional client_company_id
-  const { rows } = await tx.query(
-    `INSERT INTO "user" (email, name, password_hash, user_type, tenant_id, client_company_id, active)
-     VALUES ($1, $2, $3, $4, $5, $6, $7)
-     RETURNING id, email, name, user_type as "userType", tenant_id as "tenantId", 
-               client_company_id as "clientCompanyId", active, 
-               created_at as "createdAt", updated_at as "updatedAt"`,
-    [
-      body.email.toLowerCase(),
-      body.name,
-      passwordHash,
-      userType,
-      tenantId,
-      body.clientCompanyId || null,
-      body.active ?? true,
-    ],
-  );
-
-  const user = rows[0];
-
-  // Create tenant_membership entry with role matching user_type
-  await tx.query(
-    `INSERT INTO tenant_membership (tenant_id, user_id, role, client_id)
-     VALUES ($1, $2, $3, $4)`,
-    [tenantId, user.id, userType, body.clientCompanyId || null],
-  );
-
-  return user;
-}
-
-/**
- * List users with filtering and pagination
- * Uses simplified schema without tenant_membership joins
- */
-export async function listUsers(tx: PoolClient, query: ListUsersQueryT, tenantId: string) {
-  const conditions: string[] = ['u.tenant_id = $1'];
-  const params: any[] = [tenantId];
+export async function listUsers(
+  tx: PoolClient,
+  organizationId: string,
+  filter: ListUsersFilter,
+  limit: number,
+  offset: number
+): Promise<{ data: ListUsersResult[]; total: number }> {
+  const conditions: string[] = ['au.organization_id = $1'];
+  const params: any[] = [organizationId];
   let paramIndex = 2;
 
-  // Filter by user type
-  if (query.userType) {
-    conditions.push(`u.user_type = $${paramIndex}`);
-    params.push(query.userType);
+  if (filter.userType) {
+    conditions.push(`au.user_type = $${paramIndex}`);
+    params.push(filter.userType);
     paramIndex++;
   }
 
-  // Filter by client company
-  if (query.clientCompanyId) {
-    conditions.push(`u.client_company_id = $${paramIndex}`);
-    params.push(query.clientCompanyId);
+  if (filter.isActive !== undefined) {
+    conditions.push(`au.is_active = $${paramIndex}`);
+    params.push(filter.isActive);
     paramIndex++;
   }
 
-  // Filter by active status
-  if (query.active !== undefined) {
-    conditions.push(`u.active = $${paramIndex}`);
-    params.push(query.active);
+  if (filter.search) {
+    conditions.push(`(LOWER(au.full_name) LIKE $${paramIndex} OR LOWER(au.email) LIKE $${paramIndex})`);
+    params.push(`%${filter.search.toLowerCase()}%`);
     paramIndex++;
   }
 
-  // Search by name or email
-  if (query.search) {
-    conditions.push(`(LOWER(u.name) LIKE $${paramIndex} OR LOWER(u.email) LIKE $${paramIndex})`);
-    params.push(`%${query.search.toLowerCase()}%`);
-    paramIndex++;
-  }
-
-  const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+  const whereClause = conditions.join(' AND ');
 
   // Get total count
-  const countQuery = `
-    SELECT COUNT(*)::int as total
-    FROM "user" u
-    ${whereClause}
-  `;
-  const { rows: countRows } = await tx.query(countQuery, params);
+  const { rows: countRows } = await tx.query(
+    `SELECT COUNT(*)::int as total FROM app_user au WHERE ${whereClause}`,
+    params
+  );
   const total = countRows[0].total;
 
-  // Get paginated results with client company name
-  params.push(query.limit, query.offset);
-  const dataQuery = `
-    SELECT 
-      u.id,
-      u.email,
-      u.name,
-      u.user_type as "userType",
-      u.tenant_id as "tenantId",
-      u.client_company_id as "clientCompanyId",
-      cc.name as "clientCompanyName",
-      u.active,
-      u.last_sign_in_at as "lastSignInAt",
-      u.created_at as "createdAt",
-      u.updated_at as "updatedAt"
-    FROM "user" u
-    LEFT JOIN client_company cc ON cc.id = u.client_company_id
-    ${whereClause}
-    ORDER BY u.created_at DESC
-    LIMIT $${paramIndex} OFFSET $${paramIndex + 1}
-  `;
-
-  const { rows } = await tx.query(dataQuery, params);
+  // Get paginated results
+  params.push(limit, offset);
+  const { rows } = await tx.query(
+    `SELECT
+      id, organization_id, client_id, user_type, email, full_name,
+      is_active, created_at, updated_at
+     FROM app_user
+     WHERE ${whereClause}
+     ORDER BY created_at DESC
+     LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`,
+    params
+  );
 
   return {
-    data: rows,
+    data: rows.map(r => ({
+      id: r.id,
+      organizationId: r.organization_id,
+      clientId: r.client_id,
+      userType: r.user_type,
+      email: r.email,
+      fullName: r.full_name,
+      isActive: r.is_active,
+      createdAt: r.created_at,
+      updatedAt: r.updated_at,
+    })),
     total,
-    limit: query.limit,
-    offset: query.offset,
   };
 }
 
 /**
- * Get a single user by ID
- * Checks tenant_membership to verify user belongs to tenant
+ * Get single user by ID
  */
-export async function getUser(tx: PoolClient, userId: string, tenantId: string) {
+export async function getUserById(
+  tx: PoolClient,
+  userId: string,
+  organizationId: string
+): Promise<ListUsersResult> {
   const { rows } = await tx.query(
-    `SELECT 
-      u.id,
-      u.email,
-      u.name,
-      u.user_type as "userType",
-      u.tenant_id as "tenantId",
-      u.client_company_id as "clientCompanyId",
-      u.active,
-      u.last_sign_in_at as "lastSignInAt",
-      u.created_at as "createdAt",
-      u.updated_at as "updatedAt"
-    FROM "user" u
-    INNER JOIN tenant_membership tm ON tm.user_id = u.id AND tm.tenant_id = $2
-    WHERE u.id = $1`,
-    [userId, tenantId],
+    `SELECT id, organization_id, client_id, user_type, email, full_name,
+            is_active, created_at, updated_at
+     FROM app_user WHERE id = $1 AND organization_id = $2`,
+    [userId, organizationId]
   );
 
-  if (rows.length === 0) {
-    throw notFound('User not found or not a member of this tenant');
-  }
+  if (rows.length === 0) throw notFound('User not found');
 
-  return rows[0];
+  const r = rows[0];
+  return {
+    id: r.id,
+    organizationId: r.organization_id,
+    clientId: r.client_id,
+    userType: r.user_type,
+    email: r.email,
+    fullName: r.full_name,
+    isActive: r.is_active,
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+  };
 }
 
 /**
- * Update user details
- * Simplified to update user table directly
+ * Create EMPLOYEE user (ADMIN only)
  */
-export async function updateUser(tx: PoolClient, userId: string, body: UpdateUserBodyT, tenantId: string) {
-  // Verify user exists in tenant
-  const { rows: existingRows } = await tx.query(
-    `SELECT id FROM "user" WHERE id = $1 AND tenant_id = $2`,
-    [userId, tenantId],
+export async function createEmployee(
+  tx: PoolClient,
+  organizationId: string,
+  email: string,
+  fullName: string,
+  password: string
+): Promise<ListUsersResult> {
+  // Check email uniqueness
+  const { rows: existing } = await tx.query(
+    'SELECT id FROM app_user WHERE email = $1',
+    [email]
+  );
+  if (existing.length > 0) throw badRequest('Email already in use');
+
+  const passwordHash = await bcrypt.hash(password, 10);
+
+  const { rows } = await tx.query(
+    `INSERT INTO app_user (organization_id, client_id, user_type, email, full_name, password_hash, is_active)
+     VALUES ($1, NULL, 'EMPLOYEE', $2, $3, $4, true)
+     RETURNING id, organization_id, client_id, user_type, email, full_name, is_active, created_at, updated_at`,
+    [organizationId, email, fullName, passwordHash]
   );
 
-  if (existingRows.length === 0) {
-    throw notFound('User not found');
-  }
+  const r = rows[0];
+  return {
+    id: r.id,
+    organizationId: r.organization_id,
+    clientId: r.client_id,
+    userType: r.user_type,
+    email: r.email,
+    fullName: r.full_name,
+    isActive: r.is_active,
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+  };
+}
 
-  const updates: string[] = [];
+/**
+ * Create CLIENT user (ADMIN only, requires valid client)
+ */
+export async function createClientUser(
+  tx: PoolClient,
+  organizationId: string,
+  clientId: string,
+  email: string,
+  fullName: string,
+  password: string
+): Promise<ListUsersResult> {
+  // Verify client belongs to organization
+  const { rows: clientRows } = await tx.query(
+    'SELECT id FROM client WHERE id = $1 AND organization_id = $2',
+    [clientId, organizationId]
+  );
+  if (clientRows.length === 0) throw forbidden('Client does not belong to organization');
+
+  // Check email uniqueness
+  const { rows: existing } = await tx.query(
+    'SELECT id FROM app_user WHERE email = $1',
+    [email]
+  );
+  if (existing.length > 0) throw badRequest('Email already in use');
+
+  const passwordHash = await bcrypt.hash(password, 10);
+
+  const { rows } = await tx.query(
+    `INSERT INTO app_user (organization_id, client_id, user_type, email, full_name, password_hash, is_active)
+     VALUES ($1, $2, 'CLIENT', $3, $4, $5, true)
+     RETURNING id, organization_id, client_id, user_type, email, full_name, is_active, created_at, updated_at`,
+    [organizationId, clientId, email, fullName, passwordHash]
+  );
+
+  const r = rows[0];
+  return {
+    id: r.id,
+    organizationId: r.organization_id,
+    clientId: r.client_id,
+    userType: r.user_type,
+    email: r.email,
+    fullName: r.full_name,
+    isActive: r.is_active,
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+  };
+}
+
+/**
+ * Update user (name, email, active status)
+ * Cannot change role via this function
+ */
+export async function updateUser(
+  tx: PoolClient,
+  userId: string,
+  organizationId: string,
+  updates: { fullName?: string; email?: string; isActive?: boolean }
+): Promise<ListUsersResult> {
+  const { rows: existing } = await tx.query(
+    'SELECT id FROM app_user WHERE id = $1 AND organization_id = $2',
+    [userId, organizationId]
+  );
+  if (existing.length === 0) throw notFound('User not found');
+
+  const updateFields: string[] = [];
   const params: any[] = [];
   let paramIndex = 1;
 
-  if (body.name !== undefined) {
-    updates.push(`name = $${paramIndex}`);
-    params.push(body.name);
+  if (updates.fullName !== undefined) {
+    updateFields.push(`full_name = $${paramIndex}`);
+    params.push(updates.fullName);
     paramIndex++;
   }
 
-  if (body.email !== undefined) {
-    updates.push(`email = $${paramIndex}`);
-    params.push(body.email.toLowerCase());
+  if (updates.email !== undefined) {
+    // Check email uniqueness (excluding current user)
+    const { rows: emailCheck } = await tx.query(
+      'SELECT id FROM app_user WHERE email = $1 AND id != $2',
+      [updates.email, userId]
+    );
+    if (emailCheck.length > 0) throw badRequest('Email already in use');
+    updateFields.push(`email = $${paramIndex}`);
+    params.push(updates.email);
     paramIndex++;
   }
 
-  if (body.password !== undefined) {
-    const passwordHash = await bcrypt.hash(body.password, 10);
-    updates.push(`password_hash = $${paramIndex}`);
-    params.push(passwordHash);
+  if (updates.isActive !== undefined) {
+    updateFields.push(`is_active = $${paramIndex}`);
+    params.push(updates.isActive);
     paramIndex++;
   }
 
-  if (body.userType !== undefined) {
-    updates.push(`user_type = $${paramIndex}`);
-    params.push(body.userType);
-    paramIndex++;
-  }
-
-  if (body.clientCompanyId !== undefined) {
-    updates.push(`client_company_id = $${paramIndex}`);
-    params.push(body.clientCompanyId);
-    paramIndex++;
-  }
-
-  if (body.active !== undefined) {
-    updates.push(`active = $${paramIndex}`);
-    params.push(body.active);
-    paramIndex++;
-  }
-
-  if (updates.length === 0) {
-    throw badRequest('No fields to update');
-  }
+  if (updateFields.length === 0) throw badRequest('No fields to update');
 
   params.push(userId);
   const { rows } = await tx.query(
-    `UPDATE "user"
-     SET ${updates.join(', ')}
-     WHERE id = $${paramIndex}
-     RETURNING id, email, name, user_type as "userType", tenant_id as "tenantId",
-               client_company_id as "clientCompanyId", active, 
-               created_at as "createdAt", updated_at as "updatedAt"`,
-    params,
+    `UPDATE app_user SET ${updateFields.join(', ')} WHERE id = $${paramIndex}
+     RETURNING id, organization_id, client_id, user_type, email, full_name, is_active, created_at, updated_at`,
+    params
   );
 
-  return rows[0];
+  const r = rows[0];
+  return {
+    id: r.id,
+    organizationId: r.organization_id,
+    clientId: r.client_id,
+    userType: r.user_type,
+    email: r.email,
+    fullName: r.full_name,
+    isActive: r.is_active,
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+  };
 }
 
 /**
- * Delete user (soft delete by setting active = false, or hard delete)
+ * Change password (user calls this for themselves)
  */
-export async function deleteUser(tx: PoolClient, userId: string, tenantId: string, hard = false) {
-  // Verify user exists in tenant
-  const { rows: existingRows } = await tx.query(
-    `SELECT id FROM "user" WHERE id = $1 AND tenant_id = $2`,
-    [userId, tenantId],
+export async function changePassword(
+  tx: PoolClient,
+  userId: string,
+  newPassword: string
+): Promise<void> {
+  const passwordHash = await bcrypt.hash(newPassword, 10);
+  const { rows } = await tx.query(
+    'UPDATE app_user SET password_hash = $1 WHERE id = $2',
+    [passwordHash, userId]
   );
-
-  if (existingRows.length === 0) {
-    throw notFound('User not found');
-  }
-
-  if (hard) {
-    // Hard delete - permanently remove user
-    await tx.query(`DELETE FROM "user" WHERE id = $1 AND tenant_id = $2`, [userId, tenantId]);
-    return { deleted: true, hard: true };
-  } else {
-    // Soft delete - set active = false
-    await tx.query(`UPDATE "user" SET active = false WHERE id = $1`, [userId]);
-    return { deleted: true, hard: false };
-  }
+  if (rows.length === 0) throw notFound('User not found');
 }

@@ -2,10 +2,10 @@ openapi: 3.0.3
 info:
   title: Code Companion Ticketing API
   version: 1.0.0
-  description: Fastify + TS + pg + RLS backend API
+  description: Ticketing platform API (Fastify + TypeScript + PostgreSQL)
 servers:
   - url: http://localhost:3000
-    description: Local
+    description: Local dev
 components:
   securitySchemes:
     bearerAuth:
@@ -15,30 +15,61 @@ components:
   schemas:
     AuthUser:
       type: object
+      required: [id, organizationId, role]
       properties:
-        id: { type: string, format: uuid }
-        tenantId: { type: string, format: uuid }
-        role: { type: string, enum: [ADMIN, EMPLOYEE, CLIENT] }
-        clientId: { type: string, format: uuid, nullable: true }
+        id:
+          type: string
+          format: uuid
+        organizationId:
+          type: string
+          format: uuid
+        role:
+          type: string
+          enum: [ADMIN, EMPLOYEE, CLIENT]
+        clientId:
+          type: string
+          format: uuid
+          nullable: true
+    AdminSignupRequest:
+      type: object
+      required: [organizationName, fullName, email, password]
+      properties:
+        organizationName:
+          type: string
+        fullName:
+          type: string
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          minLength: 8
     LoginRequest:
       type: object
       required: [email, password]
       properties:
-        email: { type: string, format: email }
-        password: { type: string, minLength: 6 }
-        tenantId: { type: string, format: uuid }
-    LoginResponse:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          minLength: 8
+    AuthResponse:
       type: object
       properties:
-        accessToken: { type: string }
-        user: { $ref: "#/components/schemas/AuthUser" }
+        accessToken:
+          type: string
+        user:
+          $ref: '#/components/schemas/AuthUser'
     Client:
       type: object
       properties:
         id: { type: string, format: uuid }
-        tenantId: { type: string, format: uuid }
+        organizationId: { type: string, format: uuid }
         name: { type: string }
-        domain: { type: string, nullable: true }
+        email: { type: string, format: email, nullable: true }
+        phone: { type: string, nullable: true }
+        address: { type: string, nullable: true }
         active: { type: boolean }
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
@@ -46,177 +77,216 @@ components:
       type: object
       properties:
         id: { type: string, format: uuid }
-        tenantId: { type: string, format: uuid }
         clientId: { type: string, format: uuid }
         name: { type: string }
-        code: { type: string }
+        description: { type: string, nullable: true }
+        startDate: { type: string, format: date, nullable: true }
+        endDate: { type: string, format: date, nullable: true }
         active: { type: boolean }
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
+    ProjectMember:
+      type: object
+      properties:
+        projectId: { type: string, format: uuid }
+        userId: { type: string, format: uuid }
+        role: { type: string, enum: [MEMBER, MANAGER, VIEWER] }
+        canRaise: { type: boolean }
+        canBeAssigned: { type: boolean }
+        createdAt: { type: string, format: date-time }
     Stream:
       type: object
       properties:
         id: { type: string, format: uuid }
-        tenantId: { type: string, format: uuid }
-        projectId: { type: string, format: uuid }
+        clientId: { type: string, format: uuid }
         name: { type: string }
+        description: { type: string, nullable: true }
+        active: { type: boolean }
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
+    Subject:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        clientId: { type: string, format: uuid }
+        name: { type: string }
+        description: { type: string, nullable: true }
+        active: { type: boolean }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    Priority:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        rank: { type: integer }
+        colorHex: { type: string, nullable: true }
+        active: { type: boolean }
+    Status:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        isClosed: { type: boolean }
+        sequence: { type: integer }
+        active: { type: boolean }
     Ticket:
       type: object
       properties:
         id: { type: string, format: uuid }
-        tenantId: { type: string, format: uuid }
-        clientId: { type: string, format: uuid }
         projectId: { type: string, format: uuid }
-        streamId: { type: string, format: uuid, nullable: true }
-        reporterId: { type: string, format: uuid }
-        assigneeId: { type: string, format: uuid, nullable: true }
+        raisedByUserId: { type: string, format: uuid }
+        assignedToUserId: { type: string, format: uuid, nullable: true }
+        streamId: { type: string, format: uuid }
+        subjectId: { type: string, format: uuid }
+        priorityId: { type: string, format: uuid }
+        statusId: { type: string, format: uuid }
         title: { type: string }
-        descriptionMd: { type: string }
-        status:
-          {
-            type: string,
-            enum: [BACKLOG, TODO, IN_PROGRESS, REVIEW, DONE, CANCELLED],
-          }
-        priority: { type: string, enum: [P0, P1, P2, P3] }
-        type: { type: string, enum: [TASK, BUG, STORY, EPIC] }
-        points: { type: integer, nullable: true }
-        dueDate: { type: string, format: date-time, nullable: true }
+        descriptionMd: { type: string, nullable: true }
+        isDeleted: { type: boolean }
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
+        closedAt: { type: string, format: date-time, nullable: true }
     Comment:
       type: object
       properties:
         id: { type: string, format: uuid }
-        tenantId: { type: string, format: uuid }
         ticketId: { type: string, format: uuid }
         authorId: { type: string, format: uuid }
+        visibility: { type: string, enum: [PUBLIC, INTERNAL] }
         bodyMd: { type: string }
         createdAt: { type: string, format: date-time }
-    Tag:
-      type: object
-      properties:
-        id: { type: string, format: uuid }
-        tenantId: { type: string, format: uuid }
-        clientId: { type: string, format: uuid, nullable: true }
-        name: { type: string }
-        color: { type: string }
     Attachment:
       type: object
       properties:
         id: { type: string, format: uuid }
-        tenantId: { type: string, format: uuid }
         ticketId: { type: string, format: uuid }
-        uploaderId: { type: string, format: uuid }
-        filename: { type: string }
-        mime: { type: string }
-        size: { type: integer }
-        s3Key: { type: string }
-        url: { type: string }
+        uploadedBy: { type: string, format: uuid }
+        fileName: { type: string }
+        mimeType: { type: string }
+        fileSize: { type: integer }
+        storageUrl: { type: string }
+        createdAt: { type: string, format: date-time }
+    OutboxNotification:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        topic: { type: string }
+        ticketId: { type: string, format: uuid }
+        recipientUserId: { type: string, format: uuid }
+        payload:
+          type: object
+          additionalProperties: true
+        attempts: { type: integer }
+        deliveredAt: { type: string, format: date-time, nullable: true }
+        createdAt: { type: string, format: date-time }
 paths:
   /:
     get:
       summary: API status
       responses:
-        "200": { description: OK }
+        '200':
+          description: OK
   /health:
     get:
       summary: Health check
       responses:
-        "200": { description: OK }
-  /auth/login:
+        '200':
+          description: OK
+  /auth/signup:
     post:
       tags: [Auth]
-      summary: Login with email and password
+      summary: Bootstrap organization and admin user
       requestBody:
         required: true
         content:
           application/json:
-            schema: { $ref: "#/components/schemas/LoginRequest" }
+            schema: { $ref: '#/components/schemas/AdminSignupRequest' }
       responses:
-        "200":
+        '200':
+          description: Admin created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthResponse' }
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: Login with email/password
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LoginRequest' }
+      responses:
+        '200':
           description: JWT token issued
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/LoginResponse" }
+              schema: { $ref: '#/components/schemas/AuthResponse' }
   /auth/me:
     get:
       tags: [Auth]
-      summary: Current auth context
+      summary: Current user context
       security: [{ bearerAuth: [] }]
       responses:
-        "200":
+        '200':
           description: Current user
           content:
             application/json:
-              schema:
-                type: object
-                properties:
-                  user: { $ref: "#/components/schemas/AuthUser" }
-  /tenants/me:
-    get:
-      tags: [Tenants]
+              schema: { $ref: '#/components/schemas/AuthUser' }
+  /auth/logout:
+    post:
+      tags: [Auth]
+      summary: No-op for JWT (client discards token)
       security: [{ bearerAuth: [] }]
       responses:
-        "200":
-          description: Current tenant id
+        '200':
+          description: Logged out
+  /users:
+    get:
+      tags: [Users]
+      security: [{ bearerAuth: [] }]
+      summary: List users in organization (ADMIN/EMPLOYEE)
+      responses:
+        '200':
+          description: Users page
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  id: { type: string, format: uuid }
-  /users/assignable:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/AuthUser' }
+                  total: { type: integer }
+    patch:
+      summary: N/A
+      deprecated: true
+  /users/{id}:
     get:
       tags: [Users]
       security: [{ bearerAuth: [] }]
       parameters:
-        - in: query
-          name: clientId
-          schema: { type: string, format: uuid }
+        - name: id
+          in: path
           required: true
+          schema: { type: string, format: uuid }
+      summary: Get user by id
       responses:
-        "200":
-          description: List assignable users
+        '200':
+          description: User
           content:
             application/json:
-              schema:
-                type: array
-                items:
-                  type: object
-                  properties:
-                    id: { type: string }
-                    name: { type: string }
-                    email: { type: string }
-  /clients:
-    get:
-      tags: [Clients]
+              schema: { $ref: '#/components/schemas/AuthUser' }
+    patch:
+      tags: [Users]
       security: [{ bearerAuth: [] }]
+      summary: Update user (self or admin)
       parameters:
-        - in: query
-          name: limit
-          schema: { type: integer, minimum: 1, maximum: 200 }
-        - in: query
-          name: offset
-          schema: { type: integer, minimum: 0 }
-      responses:
-        "200":
-          description: Paged clients
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  items:
-                    {
-                      type: array,
-                      items: { $ref: "#/components/schemas/Client" },
-                    }
-                  count: { type: integer }
-    post:
-      tags: [Clients]
-      security: [{ bearerAuth: [] }]
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
       requestBody:
         required: true
         content:
@@ -224,12 +294,119 @@ paths:
             schema:
               type: object
               properties:
-                name: { type: string }
-                domain: { type: string }
-                active: { type: boolean }
-              required: [name]
+                fullName: { type: string }
+                email: { type: string, format: email }
+                isActive: { type: boolean }
       responses:
-        "201": { description: Created }
+        '200':
+          description: Updated user
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthUser' }
+  /users/{id}/password:
+    post:
+      tags: [Users]
+      security: [{ bearerAuth: [] }]
+      summary: Change own password
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                password: { type: string, minLength: 8 }
+      responses:
+        '200': { description: Password changed }
+  /employees:
+    post:
+      tags: [Users]
+      security: [{ bearerAuth: [] }]
+      summary: Create internal employee (ADMIN only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [fullName, email, password]
+              properties:
+                fullName: { type: string }
+                email: { type: string, format: email }
+                password: { type: string, minLength: 8 }
+      responses:
+        '201':
+          description: Employee created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthUser' }
+  /client-users:
+    post:
+      tags: [Users]
+      security: [{ bearerAuth: [] }]
+      summary: Create client-linked user (ADMIN only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [fullName, email, password, clientId]
+              properties:
+                fullName: { type: string }
+                email: { type: string, format: email }
+                password: { type: string, minLength: 8 }
+                clientId: { type: string, format: uuid }
+      responses:
+        '201':
+          description: Client user created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthUser' }
+  /clients:
+    get:
+      tags: [Clients]
+      security: [{ bearerAuth: [] }]
+      summary: List organization clients (ADMIN only)
+      responses:
+        '200':
+          description: Client page
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/Client' }
+                  total: { type: integer }
+    post:
+      tags: [Clients]
+      security: [{ bearerAuth: [] }]
+      summary: Create client (ADMIN only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string }
+                email: { type: string, format: email }
+                phone: { type: string }
+                address: { type: string }
+      responses:
+        '201':
+          description: Client created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Client' }
   /clients/{id}:
     get:
       tags: [Clients]
@@ -239,19 +416,17 @@ paths:
           name: id
           required: true
           schema: { type: string, format: uuid }
+      summary: Get client
       responses:
-        "200":
-          {
-            description: OK,
-            content:
-              {
-                application/json:
-                  { schema: { $ref: "#/components/schemas/Client" } },
-              },
-          }
+        '200':
+          description: Client
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Client' }
     patch:
       tags: [Clients]
       security: [{ bearerAuth: [] }]
+      summary: Update client
       parameters:
         - in: path
           name: id
@@ -265,71 +440,56 @@ paths:
               type: object
               properties:
                 name: { type: string }
-                domain: { type: string }
+                email: { type: string, format: email }
+                phone: { type: string }
+                address: { type: string }
                 active: { type: boolean }
       responses:
-        "200": { description: Updated }
-  /clients/{id}/map-employee:
-    post:
-      tags: [Clients]
-      security: [{ bearerAuth: [] }]
-      parameters:
-        - in: path
-          name: id
-          required: true
-          schema: { type: string, format: uuid }
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                userId: { type: string, format: uuid }
-              required: [userId]
-      responses:
-        "200": { description: OK }
+        '200':
+          description: Updated client
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Client' }
   /projects:
     get:
       tags: [Projects]
       security: [{ bearerAuth: [] }]
-      parameters:
-        - in: query
-          name: clientId
-          schema: { type: string, format: uuid }
+      summary: List projects (role scoped)
       responses:
-        "200":
-          {
-            description: OK,
-            content:
-              {
-                application/json:
-                  {
-                    schema:
-                      {
-                        type: array,
-                        items: { $ref: "#/components/schemas/Project" },
-                      },
-                  },
-              },
-          }
+        '200':
+          description: Project page
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/Project' }
+                  total: { type: integer }
     post:
       tags: [Projects]
       security: [{ bearerAuth: [] }]
+      summary: Create project (ADMIN only)
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [clientId, name, code]
+              required: [clientId, name]
               properties:
                 clientId: { type: string, format: uuid }
                 name: { type: string }
-                code: { type: string }
-                active: { type: boolean }
+                description: { type: string }
+                startDate: { type: string, format: date }
+                endDate: { type: string, format: date }
       responses:
-        "201": { description: Created }
+        '201':
+          description: Project created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Project' }
   /projects/{id}:
     get:
       tags: [Projects]
@@ -339,19 +499,17 @@ paths:
           name: id
           required: true
           schema: { type: string, format: uuid }
+      summary: Get project
       responses:
-        "200":
-          {
-            description: OK,
-            content:
-              {
-                application/json:
-                  { schema: { $ref: "#/components/schemas/Project" } },
-              },
-          }
+        '200':
+          description: Project
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Project' }
     patch:
       tags: [Projects]
       security: [{ bearerAuth: [] }]
+      summary: Update project (ADMIN only)
       parameters:
         - in: path
           name: id
@@ -365,54 +523,38 @@ paths:
               type: object
               properties:
                 name: { type: string }
-                code: { type: string }
+                description: { type: string }
+                startDate: { type: string, format: date }
+                endDate: { type: string, format: date }
                 active: { type: boolean }
       responses:
-        "200": { description: Updated }
-  /streams:
+        '200':
+          description: Updated project
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Project' }
+  /projects/{id}/members:
     get:
-      tags: [Streams]
+      tags: [Projects]
       security: [{ bearerAuth: [] }]
+      summary: List project members (ADMIN only)
       parameters:
-        - in: query
-          name: projectId
-          schema: { type: string, format: uuid }
+        - in: path
+          name: id
           required: true
+          schema: { type: string, format: uuid }
       responses:
-        "200":
-          {
-            description: OK,
-            content:
-              {
-                application/json:
-                  {
-                    schema:
-                      {
-                        type: array,
-                        items: { $ref: "#/components/schemas/Stream" },
-                      },
-                  },
-              },
-          }
+        '200':
+          description: Members
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/ProjectMember' }
     post:
-      tags: [Streams]
+      tags: [Projects]
       security: [{ bearerAuth: [] }]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [projectId, name]
-              properties:
-                projectId: { type: string, format: uuid }
-                name: { type: string }
-      responses:
-        "201": { description: Created }
-  /streams/{id}:
-    patch:
-      tags: [Streams]
-      security: [{ bearerAuth: [] }]
+      summary: Add project member (ADMIN only)
       parameters:
         - in: path
           name: id
@@ -424,110 +566,287 @@ paths:
           application/json:
             schema:
               type: object
+              required: [userId]
               properties:
-                name: { type: string }
+                userId: { type: string, format: uuid }
+                role: { type: string, enum: [MEMBER, MANAGER, VIEWER] }
+                canRaise: { type: boolean }
+                canBeAssigned: { type: boolean }
       responses:
-        "200": { description: Updated }
-  /tickets:
-    get:
-      tags: [Tickets]
+        '201':
+          description: Member added
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProjectMember' }
+  /projects/{projectId}/members/{userId}:
+    patch:
+      tags: [Projects]
       security: [{ bearerAuth: [] }]
+      summary: Update project member flags (ADMIN only)
       parameters:
-        - in: query
-          name: clientId
-          schema: { type: string, format: uuid }
-        - in: query
+        - in: path
           name: projectId
+          required: true
           schema: { type: string, format: uuid }
-        - in: query
-          name: streamId
+        - in: path
+          name: userId
+          required: true
           schema: { type: string, format: uuid }
-        - in: query
-          name: status
-          schema: { type: array, items: { type: string } }
-        - in: query
-          name: assigneeId
-          schema: { type: string, format: uuid }
-        - in: query
-          name: search
-          schema: { type: string }
-        - in: query
-          name: tagIds
-          schema: { type: array, items: { type: string, format: uuid } }
-        - in: query
-          name: limit
-          schema: { type: integer }
-        - in: query
-          name: offset
-          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                role: { type: string, enum: [MEMBER, MANAGER, VIEWER] }
+                canRaise: { type: boolean }
+                canBeAssigned: { type: boolean }
       responses:
-        "200":
-          description: Paged tickets
+        '200':
+          description: Member updated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProjectMember' }
+    delete:
+      tags: [Projects]
+      security: [{ bearerAuth: [] }]
+      summary: Remove project member (ADMIN only)
+      parameters:
+        - in: path
+          name: projectId
+          required: true
+          schema: { type: string, format: uuid }
+        - in: path
+          name: userId
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '204': { description: Member removed }
+  /clients/{id}/streams:
+    get:
+      tags: [Streams]
+      security: [{ bearerAuth: [] }]
+      summary: List client streams (ADMIN only)
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Streams
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  items:
-                    {
-                      type: array,
-                      items: { $ref: "#/components/schemas/Ticket" },
-                    }
-                  count: { type: integer }
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/Stream' }
+                  total: { type: integer }
     post:
-      tags: [Tickets]
+      tags: [Streams]
       security: [{ bearerAuth: [] }]
+      summary: Create stream (ADMIN only)
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [clientId, projectId, title, descriptionMd]
+              required: [name]
               properties:
-                clientId: { type: string, format: uuid }
+                name: { type: string }
+                description: { type: string }
+      responses:
+        '201':
+          description: Stream created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Stream' }
+  /streams/{id}:
+    get:
+      tags: [Streams]
+      security: [{ bearerAuth: [] }]
+      summary: Get stream
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Stream
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Stream' }
+    patch:
+      tags: [Streams]
+      security: [{ bearerAuth: [] }]
+      summary: Update stream
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                description: { type: string }
+                active: { type: boolean }
+      responses:
+        '200':
+          description: Updated stream
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Stream' }
+  /clients/{id}/subjects:
+    get:
+      tags: [Subjects]
+      security: [{ bearerAuth: [] }]
+      summary: List client subjects (ADMIN only)
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Subjects
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/Subject' }
+                  total: { type: integer }
+    post:
+      tags: [Subjects]
+      security: [{ bearerAuth: [] }]
+      summary: Create subject (ADMIN only)
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string }
+                description: { type: string }
+      responses:
+        '201':
+          description: Subject created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Subject' }
+  /subjects/{id}:
+    patch:
+      tags: [Subjects]
+      security: [{ bearerAuth: [] }]
+      summary: Update subject
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                description: { type: string }
+                active: { type: boolean }
+      responses:
+        '200':
+          description: Subject updated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Subject' }
+  /tickets:
+    get:
+      tags: [Tickets]
+      security: [{ bearerAuth: [] }]
+      summary: List tickets (role scoped)
+      responses:
+        '200':
+          description: Tickets page
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/Ticket' }
+                  total: { type: integer }
+    post:
+      tags: [Tickets]
+      security: [{ bearerAuth: [] }]
+      summary: Create ticket
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [projectId, streamId, subjectId, priorityId, statusId, title]
+              properties:
                 projectId: { type: string, format: uuid }
                 streamId: { type: string, format: uuid }
+                subjectId: { type: string, format: uuid }
+                priorityId: { type: string, format: uuid }
+                statusId: { type: string, format: uuid }
                 title: { type: string }
                 descriptionMd: { type: string }
-                priority: { type: string }
-                type: { type: string }
-                assigneeId: { type: string, format: uuid }
-                dueDate: { type: string, format: date-time }
-                points: { type: integer }
-                tagIds: { type: array, items: { type: string, format: uuid } }
+                assignedToUserId: { type: string, format: uuid }
       responses:
-        "201":
-          {
-            description: Created,
-            content:
-              {
-                application/json:
-                  { schema: { $ref: "#/components/schemas/Ticket" } },
-              },
-          }
+        '201':
+          description: Ticket created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Ticket' }
   /tickets/{id}:
     get:
       tags: [Tickets]
       security: [{ bearerAuth: [] }]
+      summary: Get ticket detail
       parameters:
         - in: path
           name: id
           required: true
           schema: { type: string, format: uuid }
       responses:
-        "200":
-          {
-            description: OK,
-            content:
-              {
-                application/json:
-                  { schema: { $ref: "#/components/schemas/Ticket" } },
-              },
-          }
+        '200':
+          description: Ticket
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Ticket' }
     patch:
       tags: [Tickets]
       security: [{ bearerAuth: [] }]
+      summary: Update ticket
       parameters:
         - in: path
           name: id
@@ -540,194 +859,240 @@ paths:
             schema:
               type: object
               properties:
+                statusId: { type: string, format: uuid }
+                priorityId: { type: string, format: uuid }
+                assignedToUserId: { type: string, format: uuid, nullable: true }
                 title: { type: string }
                 descriptionMd: { type: string }
-                status: { type: string }
-                priority: { type: string }
-                type: { type: string }
-                assigneeId: { type: string, format: uuid }
-                streamId: { type: string, format: uuid }
-                dueDate: { type: string, format: date-time }
-                points: { type: integer }
-                tagIds: { type: array, items: { type: string, format: uuid } }
       responses:
-        "200":
-          {
-            description: Updated,
-            content:
-              {
-                application/json:
-                  { schema: { $ref: "#/components/schemas/Ticket" } },
-              },
-          }
+        '200':
+          description: Updated ticket
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Ticket' }
+    delete:
+      tags: [Tickets]
+      security: [{ bearerAuth: [] }]
+      summary: Soft delete ticket
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '204': { description: Deleted }
   /tickets/{id}/comments:
     get:
       tags: [Comments]
       security: [{ bearerAuth: [] }]
+      summary: List ticket comments (visibility aware)
       parameters:
         - in: path
           name: id
           required: true
           schema: { type: string, format: uuid }
       responses:
-        "200":
-          {
-            description: OK,
-            content:
-              {
-                application/json:
-                  {
-                    schema:
-                      {
-                        type: array,
-                        items: { $ref: "#/components/schemas/Comment" },
-                      },
-                  },
-              },
-          }
-  /comments:
+        '200':
+          description: Comments
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Comment' }
     post:
       tags: [Comments]
       security: [{ bearerAuth: [] }]
+      summary: Add comment
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [ticketId, bodyMd]
+              required: [bodyMd]
               properties:
-                ticketId: { type: string, format: uuid }
+                visibility: { type: string, enum: [PUBLIC, INTERNAL], default: PUBLIC }
                 bodyMd: { type: string }
       responses:
-        "201":
-          {
-            description: Created,
-            content:
-              {
-                application/json:
-                  { schema: { $ref: "#/components/schemas/Comment" } },
-              },
-          }
-  /tags:
+        '201':
+          description: Comment created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Comment' }
+  /comments/{id}:
     get:
-      tags: [Tags]
+      tags: [Comments]
       security: [{ bearerAuth: [] }]
-      parameters:
-        - in: query
-          name: clientId
-          schema: { type: string, format: uuid }
-      responses:
-        "200":
-          {
-            description: OK,
-            content:
-              {
-                application/json:
-                  {
-                    schema:
-                      {
-                        type: array,
-                        items: { $ref: "#/components/schemas/Tag" },
-                      },
-                  },
-              },
-          }
-    post:
-      tags: [Tags]
-      security: [{ bearerAuth: [] }]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [name, color]
-              properties:
-                name: { type: string }
-                color: { type: string }
-                clientId: { type: string, format: uuid }
-      responses:
-        "201":
-          {
-            description: Created,
-            content:
-              {
-                application/json:
-                  { schema: { $ref: "#/components/schemas/Tag" } },
-              },
-          }
-  /tags/{id}:
-    delete:
-      tags: [Tags]
-      security: [{ bearerAuth: [] }]
+      summary: Get single comment (visibility enforced)
       parameters:
         - in: path
           name: id
           required: true
           schema: { type: string, format: uuid }
       responses:
-        "200": { description: Deleted }
+        '200':
+          description: Comment
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Comment' }
   /tickets/{id}/attachments:
     get:
       tags: [Attachments]
       security: [{ bearerAuth: [] }]
+      summary: List ticket attachments
       parameters:
         - in: path
           name: id
           required: true
           schema: { type: string, format: uuid }
       responses:
-        "200":
-          {
-            description: OK,
-            content:
-              {
-                application/json:
-                  {
-                    schema:
-                      {
-                        type: array,
-                        items: { $ref: "#/components/schemas/Attachment" },
-                      },
-                  },
-              },
-          }
-  /attachments:
+        '200':
+          description: Attachments
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Attachment' }
+  /tickets/{id}/attachments/presign:
     post:
       tags: [Attachments]
       security: [{ bearerAuth: [] }]
+      summary: Get upload URL for attachment
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
       requestBody:
         required: true
         content:
-          multipart/form-data:
+          application/json:
             schema:
               type: object
+              required: [fileName, mimeType]
               properties:
-                file:
-                  type: string
-                  format: binary
-                ticketId:
-                  type: string
-                  format: uuid
+                fileName: { type: string }
+                mimeType: { type: string }
       responses:
-        "201":
-          {
-            description: Created,
-            content:
-              {
-                application/json:
-                  { schema: { $ref: "#/components/schemas/Attachment" } },
-              },
-          }
+        '200':
+          description: Presigned upload data
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  uploadUrl: { type: string }
+                  key: { type: string }
+  /tickets/{id}/attachments/confirm:
+    post:
+      tags: [Attachments]
+      security: [{ bearerAuth: [] }]
+      summary: Confirm attachment upload
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [storageUrl, fileName, mimeType, fileSize]
+              properties:
+                storageUrl: { type: string }
+                fileName: { type: string }
+                mimeType: { type: string }
+                fileSize: { type: integer }
+      responses:
+        '201':
+          description: Attachment stored
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Attachment' }
   /attachments/{id}:
     delete:
       tags: [Attachments]
       security: [{ bearerAuth: [] }]
+      summary: Delete attachment
       parameters:
         - in: path
           name: id
           required: true
           schema: { type: string, format: uuid }
       responses:
-        "200": { description: Deleted }
+        '204': { description: Attachment deleted }
+  /taxonomy/priority:
+    get:
+      tags: [Taxonomy]
+      security: [{ bearerAuth: [] }]
+      summary: List priority levels
+      responses:
+        '200':
+          description: Priorities
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Priority' }
+  /taxonomy/status:
+    get:
+      tags: [Taxonomy]
+      security: [{ bearerAuth: [] }]
+      summary: List status values
+      responses:
+        '200':
+          description: Status values
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Status' }
+  /_internal/outbox/pending:
+    get:
+      tags: [Outbox]
+      security: [{ bearerAuth: [] }]
+      summary: List pending notification outbox entries (ADMIN)
+      parameters:
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 500 }
+      responses:
+        '200':
+          description: Pending notifications
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/OutboxNotification' }
+  /_internal/outbox/process:
+    post:
+      tags: [Outbox]
+      security: [{ bearerAuth: [] }]
+      summary: Process pending notifications (ADMIN)
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                limit: { type: integer, minimum: 1, maximum: 100 }
+      responses:
+        '200':
+          description: Processing result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  processed: { type: integer }
+                  failed: { type: integer }
+security:
+  - bearerAuth: []

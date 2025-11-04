@@ -1,30 +1,59 @@
 import { PoolClient } from 'pg';
-import { CreateTagBodyT } from '../schemas/tags.schema';
 
-export async function listTags(tx: PoolClient, clientId?: string) {
-  const where = clientId ? `where client_id=$1 or client_id is null` : '';
-  const params = clientId ? [clientId] : [] as any[];
-  const { rows } = await tx.query(
-    `select id, tenant_id as "tenantId", client_id as "clientId", name, color from ticket_tag ${where} order by name asc`,
-    params,
-  );
-  return rows;
+export interface PriorityResult {
+  id: string;
+  name: string;
+  rank: number;
+  colorHex: string | null;
+  active: boolean;
+  createdAt: Date;
+  updatedAt: Date;
 }
 
-export async function createTag(tx: PoolClient, body: CreateTagBodyT, tenantId: string) {
-  const { rows } = await tx.query(
-    `
-    insert into ticket_tag(id,tenant_id,client_id,name,color)
-    values (gen_random_uuid(),$1,$2,$3,$4)
-    returning id, tenant_id as "tenantId", client_id as "clientId", name, color
-  `,
-    [tenantId, body.clientId ?? null, body.name, body.color],
-  );
-  return rows[0];
+export interface StatusResult {
+  id: string;
+  name: string;
+  isClosed: boolean;
+  sequence: number;
+  active: boolean;
+  createdAt: Date;
+  updatedAt: Date;
 }
 
-export async function deleteTag(tx: PoolClient, id: string) {
-  await tx.query(`delete from ticket_tag_map where tag_id=$1`, [id]);
-  await tx.query(`delete from ticket_tag where id=$1`, [id]);
-  return { ok: true };
+export async function listPriorities(tx: PoolClient): Promise<PriorityResult[]> {
+  const { rows } = await tx.query(
+    `SELECT id, name, rank, color_hex, active, created_at, updated_at
+     FROM priority
+     WHERE active = true
+     ORDER BY rank ASC`
+  );
+
+  return rows.map(r => ({
+    id: r.id,
+    name: r.name,
+    rank: r.rank,
+    colorHex: r.color_hex,
+    active: r.active,
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+  }));
+}
+
+export async function listStatuses(tx: PoolClient): Promise<StatusResult[]> {
+  const { rows } = await tx.query(
+    `SELECT id, name, is_closed, sequence, active, created_at, updated_at
+     FROM status
+     WHERE active = true
+     ORDER BY sequence ASC`
+  );
+
+  return rows.map(r => ({
+    id: r.id,
+    name: r.name,
+    isClosed: r.is_closed,
+    sequence: r.sequence,
+    active: r.active,
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+  }));
 }

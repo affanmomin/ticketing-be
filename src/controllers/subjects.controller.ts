@@ -1,25 +1,22 @@
 import { FastifyRequest, FastifyReply } from 'fastify';
 import { pool } from '../db/pool';
-import { listStreams, getStream, createStream, updateStream } from '../services/streams.service';
-import { ListStreamsQuery, CreateStreamBody, UpdateStreamBody } from '../schemas/streams.schema';
+import { listSubjects, getSubject, createSubject, updateSubject } from '../services/subjects.service';
+import { ListSubjectsQuery, CreateSubjectBody, UpdateSubjectBody } from '../schemas/subjects.schema';
 import { IdParam } from '../schemas/common.schema';
 import { forbidden, unauthorized } from '../utils/errors';
 
-/**
- * GET /clients/:id/streams - List streams for a client (ADMIN only)
- */
-export async function listStreamsCtrl(req: FastifyRequest, reply: FastifyReply) {
+export async function listSubjectsCtrl(req: FastifyRequest, reply: FastifyReply) {
   if (!req.user) throw unauthorized('Authentication required');
-  if (req.user.role !== 'ADMIN') throw forbidden('Only admins can list streams');
+  if (req.user.role !== 'ADMIN') throw forbidden('Only admins can list subjects');
 
   const { id: clientId } = IdParam.parse(req.params);
-  const query = ListStreamsQuery.parse(req.query);
+  const query = ListSubjectsQuery.parse(req.query);
 
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
 
-    const result = await listStreams(
+    const result = await listSubjects(
       client,
       clientId,
       req.user.organizationId,
@@ -37,20 +34,17 @@ export async function listStreamsCtrl(req: FastifyRequest, reply: FastifyReply) 
   }
 }
 
-/**
- * GET /streams/:id - Get single stream (ADMIN only)
- */
-export async function getStreamCtrl(req: FastifyRequest, reply: FastifyReply) {
+export async function getSubjectCtrl(req: FastifyRequest, reply: FastifyReply) {
   if (!req.user) throw unauthorized('Authentication required');
-  if (req.user.role !== 'ADMIN') throw forbidden('Only admins can view streams');
+  if (req.user.role !== 'ADMIN') throw forbidden('Only admins can view subjects');
 
-  const { id: streamId } = IdParam.parse(req.params);
+  const { id: subjectId } = IdParam.parse(req.params);
 
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
 
-    const result = await getStream(client, streamId, req.user.organizationId);
+    const result = await getSubject(client, subjectId, req.user.organizationId);
 
     await client.query('COMMIT');
     return reply.send(result);
@@ -62,21 +56,18 @@ export async function getStreamCtrl(req: FastifyRequest, reply: FastifyReply) {
   }
 }
 
-/**
- * POST /clients/:id/streams - Create stream (ADMIN only)
- */
-export async function createStreamCtrl(req: FastifyRequest, reply: FastifyReply) {
+export async function createSubjectCtrl(req: FastifyRequest, reply: FastifyReply) {
   if (!req.user) throw unauthorized('Authentication required');
-  if (req.user.role !== 'ADMIN') throw forbidden('Only admins can create streams');
+  if (req.user.role !== 'ADMIN') throw forbidden('Only admins can create subjects');
 
   const { id: clientId } = IdParam.parse(req.params);
-  const body = CreateStreamBody.parse(req.body);
+  const body = CreateSubjectBody.parse(req.body);
 
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
 
-    const result = await createStream(
+    const result = await createSubject(
       client,
       req.user.organizationId,
       clientId,
@@ -94,23 +85,20 @@ export async function createStreamCtrl(req: FastifyRequest, reply: FastifyReply)
   }
 }
 
-/**
- * PATCH /streams/:id - Update stream (ADMIN only)
- */
-export async function updateStreamCtrl(req: FastifyRequest, reply: FastifyReply) {
+export async function updateSubjectCtrl(req: FastifyRequest, reply: FastifyReply) {
   if (!req.user) throw unauthorized('Authentication required');
-  if (req.user.role !== 'ADMIN') throw forbidden('Only admins can update streams');
+  if (req.user.role !== 'ADMIN') throw forbidden('Only admins can update subjects');
 
-  const { id: streamId } = IdParam.parse(req.params);
-  const body = UpdateStreamBody.parse(req.body);
+  const { id: subjectId } = IdParam.parse(req.params);
+  const body = UpdateSubjectBody.parse(req.body);
 
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
 
-    const result = await updateStream(
+    const result = await updateSubject(
       client,
-      streamId,
+      subjectId,
       req.user.organizationId,
       {
         name: body.name,

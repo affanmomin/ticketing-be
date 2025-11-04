@@ -1,22 +1,35 @@
 import { FastifyInstance } from 'fastify';
 import {
-  usersAssignableCtrl,
-  createUserCtrl,
   listUsersCtrl,
   getUserCtrl,
+  createEmployeeCtrl,
+  createClientUserCtrl,
   updateUserCtrl,
-  deleteUserCtrl,
+  changePasswordCtrl,
 } from '../controllers/users.controller';
-
+import { ListUsersQuery } from '../schemas/users.schema';
+import { IdParam } from '../schemas/common.schema';
 
 export default async function usersRoutes(app: FastifyInstance) {
-  // List assignable users for a client (existing endpoint)
-  app.get('/users/assignable', usersAssignableCtrl);
+  // List users (ADMIN/EMPLOYEE)
+  app.get(
+    '/users',
+    { schema: { querystring: ListUsersQuery } },
+    listUsersCtrl
+  );
 
-  // CRUD operations for user management
-  app.post('/users', createUserCtrl); // Create user (admin only)
-  app.get('/users', listUsersCtrl); // List users with filters
-  app.get('/users/:id', getUserCtrl); // Get single user
-  app.put('/users/:id', updateUserCtrl); // Update user
-  app.delete('/users/:id', deleteUserCtrl); // Delete user (admin only)
+  // Get single user
+  app.get('/users/:id', { schema: { params: IdParam } }, getUserCtrl);
+
+  // Create employee (ADMIN only)
+  app.post('/employees', createEmployeeCtrl);
+
+  // Create client user (ADMIN only)
+  app.post('/client-users', createClientUserCtrl);
+
+  // Update user
+  app.patch('/users/:id', { schema: { params: IdParam } }, updateUserCtrl);
+
+  // Change password (self)
+  app.post('/users/:id/password', { schema: { params: IdParam } }, changePasswordCtrl);
 }

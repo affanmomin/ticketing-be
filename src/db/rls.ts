@@ -1,26 +1,54 @@
+import { PoolClient } from 'pg';
 import { FastifyRequest } from 'fastify';
-import { pool } from './pool';
 
-export async function withRlsTx<T>(req: FastifyRequest, fn: (tx: import('pg').PoolClient) => Promise<T>): Promise<T> {
-  const { tenantId, userId, role, clientId } = req.auth!;
-  const tx = await pool.connect();
-  try {
-    await tx.query('BEGIN');
-    await tx.query(`select set_config('app.tenant_id',$1,true)`, [tenantId]);
-    await tx.query(`select set_config('app.user_id',$1,true)`, [userId]);
-    await tx.query(`select set_config('app.role',$1,true)`, [role]);
-    await tx.query(`select set_config('app.client_id',$1,true)`, [clientId ?? '']);
-    (req as any).db = { tx };
-    const result = await fn(tx);
-    await tx.query('COMMIT');
-    return result;
-  } catch (e) {
-    try {
-      await tx.query('ROLLBACK');
-    } catch {}
-    throw e;
-  } finally {
-    tx.release();
-    (req as any).db = undefined;
+export async function withRlsTx<T>(
+  req: FastifyRequest,
+  fn: (tx: PoolClient) => Promise<T>
+): Promise<T> {
+  if (!req.user) throw new Error('Auth context required');
+  const tx = req.db?.tx;
+  if (!tx) throw new Error('Transaction context required');
+  return fn(tx);
+}
+
+// SQL Query Builder helpers
+export function inArray(ids: string[], cast: 'uuid' | 'text' = 'uuid'): { text: string; values: string[] } {
+  const placeholders = ids.map((_, i) => `$${i + 1}`).join(',');
+  return {
+    text: `(${placeholders})${cast === 'uuid' ? '::uuid[]' : ''}`,
+    values: ids,
+  };
+}
+
+export interface PaginateSortInput {
+  limit: number;
+  offset: number;
+  sortBy?: string;
+  sortDir?: 'ASC' | 'DESC';
+  whitelist: string[];
+}
+
+export function paginateSortClause(input: PaginateSortInput): string {
+  let clause = '';
+  if (input.sortBy && input.whitelist.includes(input.sortBy)) {
+    const dir = input.sortDir === 'DESC' ? 'DESC' : 'ASC';
+    clause += ` ORDER BY ${input.sortBy} ${dir}`;
   }
+  clause += ` LIMIT ${input.limit} OFFSET ${input.offset}`;
+  return clause;
+}
+
+// Scope builders for auth context
+export function orgScope(orgId: string): { where: string; params: [string] } {
+  return {
+    where: 'organization_id = $1',
+    params: [orgId],
+  };
+}
+
+export function clientScope(clientId: string): { where: string; params: [string] } {
+  return {
+    where: 'client_id = $1',
+    params: [clientId],
+  };
 }

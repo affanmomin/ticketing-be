@@ -1,7 +1,7 @@
 import { PoolClient } from 'pg';
 import { badRequest, notFound, forbidden } from '../utils/errors';
 
-export interface StreamResult {
+export interface SubjectResult {
   id: string;
   clientId: string;
   name: string;
@@ -11,13 +11,13 @@ export interface StreamResult {
   updatedAt: Date;
 }
 
-export async function listStreams(
+export async function listSubjects(
   tx: PoolClient,
   clientId: string,
   organizationId: string,
   limit: number,
   offset: number
-): Promise<{ data: StreamResult[]; total: number }> {
+): Promise<{ data: SubjectResult[]; total: number }> {
   const { rows: clientRows } = await tx.query(
     'SELECT id FROM client WHERE id = $1 AND organization_id = $2',
     [clientId, organizationId]
@@ -25,14 +25,14 @@ export async function listStreams(
   if (clientRows.length === 0) throw forbidden('Client not found');
 
   const { rows: countRows } = await tx.query(
-    'SELECT COUNT(*)::int as total FROM stream WHERE client_id = $1',
+    'SELECT COUNT(*)::int as total FROM subject WHERE client_id = $1',
     [clientId]
   );
   const total = countRows[0].total;
 
   const { rows } = await tx.query(
     `SELECT id, client_id, name, description, active, created_at, updated_at
-     FROM stream WHERE client_id = $1
+     FROM subject WHERE client_id = $1
      ORDER BY created_at DESC
      LIMIT $2 OFFSET $3`,
     [clientId, limit, offset]
@@ -52,19 +52,19 @@ export async function listStreams(
   };
 }
 
-export async function getStream(
+export async function getSubject(
   tx: PoolClient,
-  streamId: string,
+  subjectId: string,
   organizationId: string
-): Promise<StreamResult> {
+): Promise<SubjectResult> {
   const { rows } = await tx.query(
     `SELECT s.id, s.client_id, s.name, s.description, s.active, s.created_at, s.updated_at
-     FROM stream s
+     FROM subject s
      JOIN client c ON c.id = s.client_id
      WHERE s.id = $1 AND c.organization_id = $2`,
-    [streamId, organizationId]
+    [subjectId, organizationId]
   );
-  if (rows.length === 0) throw notFound('Stream not found');
+  if (rows.length === 0) throw notFound('Subject not found');
   const r = rows[0];
   return {
     id: r.id,
@@ -77,13 +77,13 @@ export async function getStream(
   };
 }
 
-export async function createStream(
+export async function createSubject(
   tx: PoolClient,
   organizationId: string,
   clientId: string,
   name: string,
   description?: string | null
-): Promise<StreamResult> {
+): Promise<SubjectResult> {
   const { rows: clientRows } = await tx.query(
     'SELECT id FROM client WHERE id = $1 AND organization_id = $2',
     [clientId, organizationId]
@@ -91,13 +91,13 @@ export async function createStream(
   if (clientRows.length === 0) throw forbidden('Client not found');
 
   const { rows: existing } = await tx.query(
-    'SELECT id FROM stream WHERE client_id = $1 AND name = $2',
+    'SELECT id FROM subject WHERE client_id = $1 AND name = $2',
     [clientId, name]
   );
-  if (existing.length > 0) throw badRequest('Stream with this name already exists');
+  if (existing.length > 0) throw badRequest('Subject with this name already exists');
 
   const { rows } = await tx.query(
-    `INSERT INTO stream (client_id, name, description, active)
+    `INSERT INTO subject (client_id, name, description, active)
      VALUES ($1, $2, $3, true)
      RETURNING id, client_id, name, description, active, created_at, updated_at`,
     [clientId, name, description || null]
@@ -114,19 +114,19 @@ export async function createStream(
   };
 }
 
-export async function updateStream(
+export async function updateSubject(
   tx: PoolClient,
-  streamId: string,
+  subjectId: string,
   organizationId: string,
   updates: { name?: string; description?: string | null; active?: boolean }
-): Promise<StreamResult> {
+): Promise<SubjectResult> {
   const { rows: existing } = await tx.query(
-    `SELECT s.id FROM stream s
+    `SELECT s.id FROM subject s
      JOIN client c ON c.id = s.client_id
      WHERE s.id = $1 AND c.organization_id = $2`,
-    [streamId, organizationId]
+    [subjectId, organizationId]
   );
-  if (existing.length === 0) throw notFound('Stream not found');
+  if (existing.length === 0) throw notFound('Subject not found');
 
   const updateFields: string[] = [];
   const params: any[] = [];
@@ -152,9 +152,9 @@ export async function updateStream(
 
   if (updateFields.length === 0) throw badRequest('No fields to update');
 
-  params.push(streamId);
+  params.push(subjectId);
   const { rows } = await tx.query(
-    `UPDATE stream SET ${updateFields.join(', ')} WHERE id = $${paramIndex}
+    `UPDATE subject SET ${updateFields.join(', ')} WHERE id = $${paramIndex}
      RETURNING id, client_id, name, description, active, created_at, updated_at`,
     params
   );

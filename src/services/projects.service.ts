@@ -1,105 +1,450 @@
 import { PoolClient } from 'pg';
-import { CreateProjectBodyT, UpdateProjectBodyT } from '../schemas/projects.schema';
+import { badRequest, notFound, forbidden } from '../utils/errors';
+import { Role } from '../types/common';
 
-export async function listProjects(tx: PoolClient, clientId?: string) {
-  const where = clientId ? `where client_id=$1` : '';
-  const params = clientId ? [clientId] : [] as any[];
-  const { rows } = await tx.query(
-    `select id, tenant_id as "tenantId", client_id as "clientId", name, code, active, created_at as "createdAt", updated_at as "updatedAt"
-     from project ${where} order by created_at desc`,
-    params,
-  );
-  return rows;
+export interface ProjectResult {
+  id: string;
+  clientId: string;
+  name: string;
+  description: string | null;
+  startDate: string | null;
+  endDate: string | null;
+  active: boolean;
+  createdAt: Date;
+  updatedAt: Date;
 }
 
-export async function createProject(tx: PoolClient, body: CreateProjectBodyT, tenantId: string) {
-  const { rows } = await tx.query(
-    `insert into project(id,tenant_id,client_id,name,code,active)
-    values (gen_random_uuid(),$1,$2,$3,$4,$5)
-    returning id, tenant_id as "tenantId", client_id as "clientId", name, code, active, created_at as "createdAt", updated_at as "updatedAt"`,
-    [tenantId, body.clientId, body.name, body.code, body.active ?? true],
-  );
-  return rows[0];
+export interface ProjectMemberResult {
+  projectId: string;
+  userId: string;
+  role: 'MEMBER' | 'MANAGER' | 'VIEWER';
+  canRaise: boolean;
+  canBeAssigned: boolean;
+  createdAt: Date;
 }
 
-export async function getProject(tx: PoolClient, id: string) {
-  // Get project details
-  const { rows: projectRows } = await tx.query(
-    `select id, tenant_id as "tenantId", client_id as "clientId", name, code, active, created_at as "createdAt", updated_at as "updatedAt"
-     from project where id=$1`,
-    [id],
-  );
-  
-  if (!projectRows[0]) return null;
-  
-  const project = projectRows[0];
-
-  // Get all streams for this project
-  const { rows: streams } = await tx.query(
-    `select id, tenant_id as "tenantId", project_id as "projectId", name, created_at as "createdAt", updated_at as "updatedAt"
-     from project_stream where project_id=$1 order by created_at desc`,
-    [id],
-  );
-
-  // Get all tickets for this project with assignee and reporter details
-  const { rows: tickets } = await tx.query(
-    `select 
-      t.id, 
-      t.tenant_id as "tenantId", 
-      t.client_id as "clientId", 
-      t.project_id as "projectId", 
-      t.stream_id as "streamId",
-      t.reporter_id as "reporterId", 
-      t.assignee_id as "assigneeId", 
-      t.title, 
-      t.description_md as "descriptionMd", 
-      t.status,
-      t.priority, 
-      t.type, 
-      t.points, 
-      t.due_date as "dueDate", 
-      t.archived_at as "archivedAt", 
-      t.created_at as "createdAt", 
-      t.updated_at as "updatedAt",
-      json_build_object(
-        'id', assignee.id,
-        'name', assignee.name,
-        'email', assignee.email,
-        'userType', assignee.user_type
-      ) as assignee,
-      json_build_object(
-        'id', reporter.id,
-        'name', reporter.name,
-        'email', reporter.email,
-        'userType', reporter.user_type
-      ) as reporter
-     from ticket t
-     left join "user" assignee on t.assignee_id = assignee.id
-     left join "user" reporter on t.reporter_id = reporter.id
-     where t.project_id=$1 
-     order by t.updated_at desc`,
-    [id],
-  );
-
-  return {
-    ...project,
-    streams,
-    tickets,
+export interface ListProjectsOptions {
+  organizationId: string;
+  userId: string;
+  role: Role;
+  clientId: string | null;
+  filters?: {
+    clientId?: string;
+  };
+  pagination: {
+    limit: number;
+    offset: number;
   };
 }
 
-export async function updateProject(tx: PoolClient, id: string, body: UpdateProjectBodyT) {
+/**
+ * List projects scoped by user role and organization
+ */
+export async function listProjects(
+  tx: PoolClient,
+  options: ListProjectsOptions
+): Promise<{ data: ProjectResult[]; total: number }> {
+  const { organizationId, userId, role, clientId, filters, pagination } = options;
+
+  const conditions: string[] = [];
+  const params: any[] = [];
+
+  // ADMIN: all projects in organization
+  if (role === 'ADMIN') {
+    params.push(organizationId);
+    conditions.push(`c.organization_id = $${params.length}`);
+  } else if (role === 'EMPLOYEE') {
+    // EMPLOYEE: projects they're members of
+    params.push(organizationId);
+    const orgIdx = params.length;
+    params.push(userId);
+    const userIdx = params.length;
+    conditions.push(`c.organization_id = $${orgIdx} AND EXISTS (
+      SELECT 1 FROM project_member pm
+      WHERE pm.project_id = p.id AND pm.user_id = $${userIdx}
+    )`);
+  } else if (role === 'CLIENT') {
+    // CLIENT: projects for their client
+    params.push(clientId);
+    conditions.push(`p.client_id = $${params.length}`);
+  }
+
+  if (filters?.clientId) {
+    params.push(filters.clientId);
+    conditions.push(`p.client_id = $${params.length}`);
+  }
+
+  const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+
+  const countSql = `
+    SELECT COUNT(*)::int as total
+    FROM project p
+    JOIN client c ON c.id = p.client_id
+    ${whereClause}
+  `;
+  const { rows: countRows } = await tx.query(countSql, params);
+  const total = countRows[0].total;
+
+  const dataParams = [...params, pagination.limit, pagination.offset];
+  const limitIdx = params.length + 1;
+  const offsetIdx = params.length + 2;
+
+  const dataSql = `
+    SELECT p.id, p.client_id, p.name, p.description, p.start_date, p.end_date,
+           p.active, p.created_at, p.updated_at
+    FROM project p
+    JOIN client c ON c.id = p.client_id
+    ${whereClause}
+    ORDER BY p.created_at DESC
+    LIMIT $${limitIdx} OFFSET $${offsetIdx}
+  `;
+  const { rows } = await tx.query(dataSql, dataParams);
+
+  return {
+    data: rows.map(r => ({
+      id: r.id,
+      clientId: r.client_id,
+      name: r.name,
+      description: r.description,
+      startDate: r.start_date,
+      endDate: r.end_date,
+      active: r.active,
+      createdAt: r.created_at,
+      updatedAt: r.updated_at,
+    })),
+    total,
+  };
+}
+
+/**
+ * Get a single project
+ */
+export async function getProject(
+  tx: PoolClient,
+  projectId: string,
+  organizationId: string
+): Promise<ProjectResult> {
   const { rows } = await tx.query(
-    `
-    update project set
-      name = coalesce($2, name),
-      code = coalesce($3, code),
-      active = coalesce($4, active),
-      updated_at = now()
-    where id=$1
-    returning id, tenant_id as "tenantId", client_id as "clientId", name, code, active, created_at as "createdAt", updated_at as "updatedAt"
-  `,
-    [id, body.name ?? null, body.code ?? null, body.active ?? null],
+    `SELECT p.id, p.client_id, p.name, p.description, p.start_date, p.end_date, 
+            p.active, p.created_at, p.updated_at
+     FROM project p
+     JOIN client c ON c.id = p.client_id
+     WHERE p.id = $1 AND c.organization_id = $2`,
+    [projectId, organizationId]
   );
-  return rows[0] ?? null;
+
+  if (rows.length === 0) throw notFound('Project not found');
+
+  const r = rows[0];
+  return {
+    id: r.id,
+    clientId: r.client_id,
+    name: r.name,
+    description: r.description,
+    startDate: r.start_date,
+    endDate: r.end_date,
+    active: r.active,
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+  };
+}
+
+/**
+ * Create a project (ADMIN only)
+ */
+export async function createProject(
+  tx: PoolClient,
+  organizationId: string,
+  clientId: string,
+  name: string,
+  description?: string | null,
+  startDate?: string | null,
+  endDate?: string | null
+): Promise<ProjectResult> {
+  // Verify client belongs to organization
+  const { rows: clientRows } = await tx.query(
+    'SELECT id FROM client WHERE id = $1 AND organization_id = $2',
+    [clientId, organizationId]
+  );
+  if (clientRows.length === 0) throw forbidden('Client does not belong to organization');
+
+  // Check unique constraint (client_id, name)
+  const { rows: existing } = await tx.query(
+    'SELECT id FROM project WHERE client_id = $1 AND name = $2',
+    [clientId, name]
+  );
+  if (existing.length > 0) throw badRequest('Project with this name already exists for client');
+
+  const { rows } = await tx.query(
+    `INSERT INTO project (client_id, name, description, start_date, end_date, active)
+     VALUES ($1, $2, $3, $4, $5, true)
+     RETURNING id, client_id, name, description, start_date, end_date, active, created_at, updated_at`,
+    [clientId, name, description || null, startDate || null, endDate || null]
+  );
+
+  const r = rows[0];
+  return {
+    id: r.id,
+    clientId: r.client_id,
+    name: r.name,
+    description: r.description,
+    startDate: r.start_date,
+    endDate: r.end_date,
+    active: r.active,
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+  };
+}
+
+/**
+ * Update a project (ADMIN only)
+ */
+export async function updateProject(
+  tx: PoolClient,
+  projectId: string,
+  organizationId: string,
+  updates: { name?: string; description?: string | null; startDate?: string | null; endDate?: string | null; active?: boolean }
+): Promise<ProjectResult> {
+  // Verify project exists in organization
+  const { rows: existing } = await tx.query(
+    `SELECT p.id FROM project p
+     JOIN client c ON c.id = p.client_id
+     WHERE p.id = $1 AND c.organization_id = $2`,
+    [projectId, organizationId]
+  );
+  if (existing.length === 0) throw notFound('Project not found');
+
+  const updateFields: string[] = [];
+  const params: any[] = [];
+  let paramIndex = 1;
+
+  if (updates.name !== undefined) {
+    updateFields.push(`name = $${paramIndex}`);
+    params.push(updates.name);
+    paramIndex++;
+  }
+
+  if (updates.description !== undefined) {
+    updateFields.push(`description = $${paramIndex}`);
+    params.push(updates.description);
+    paramIndex++;
+  }
+
+  if (updates.startDate !== undefined) {
+    updateFields.push(`start_date = $${paramIndex}`);
+    params.push(updates.startDate);
+    paramIndex++;
+  }
+
+  if (updates.endDate !== undefined) {
+    updateFields.push(`end_date = $${paramIndex}`);
+    params.push(updates.endDate);
+    paramIndex++;
+  }
+
+  if (updates.active !== undefined) {
+    updateFields.push(`active = $${paramIndex}`);
+    params.push(updates.active);
+    paramIndex++;
+  }
+
+  if (updateFields.length === 0) throw badRequest('No fields to update');
+
+  params.push(projectId);
+  const { rows } = await tx.query(
+    `UPDATE project SET ${updateFields.join(', ')} WHERE id = $${paramIndex}
+     RETURNING id, client_id, name, description, start_date, end_date, active, created_at, updated_at`,
+    params
+  );
+
+  const r = rows[0];
+  return {
+    id: r.id,
+    clientId: r.client_id,
+    name: r.name,
+    description: r.description,
+    startDate: r.start_date,
+    endDate: r.end_date,
+    active: r.active,
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+  };
+}
+
+/**
+ * Get project members
+ */
+export async function getProjectMembers(
+  tx: PoolClient,
+  projectId: string,
+  organizationId: string
+): Promise<ProjectMemberResult[]> {
+  // Verify project exists in organization
+  const { rows: projectRows } = await tx.query(
+    `SELECT 1 FROM project p
+     JOIN client c ON c.id = p.client_id
+     WHERE p.id = $1 AND c.organization_id = $2`,
+    [projectId, organizationId]
+  );
+  if (projectRows.length === 0) throw notFound('Project not found');
+
+  const { rows } = await tx.query(
+    `SELECT project_id, user_id, role, can_raise, can_be_assigned, created_at
+     FROM project_member
+     WHERE project_id = $1
+     ORDER BY created_at DESC`,
+    [projectId]
+  );
+
+  return rows.map(r => ({
+    projectId: r.project_id,
+    userId: r.user_id,
+    role: r.role,
+    canRaise: r.can_raise,
+    canBeAssigned: r.can_be_assigned,
+    createdAt: r.created_at,
+  }));
+}
+
+/**
+ * Add project member (ADMIN only)
+ */
+export async function addProjectMember(
+  tx: PoolClient,
+  projectId: string,
+  userId: string,
+  organizationId: string,
+  role: 'MEMBER' | 'MANAGER' | 'VIEWER',
+  canRaise: boolean,
+  canBeAssigned: boolean
+): Promise<ProjectMemberResult> {
+  // Verify project exists in organization
+  const { rows: projectRows } = await tx.query(
+    `SELECT 1 FROM project p
+     JOIN client c ON c.id = p.client_id
+     WHERE p.id = $1 AND c.organization_id = $2`,
+    [projectId, organizationId]
+  );
+  if (projectRows.length === 0) throw notFound('Project not found');
+
+  // Verify user exists in organization
+  const { rows: userRows } = await tx.query(
+    'SELECT id FROM app_user WHERE id = $1 AND organization_id = $2',
+    [userId, organizationId]
+  );
+  if (userRows.length === 0) throw notFound('User not found');
+
+  // Check if already a member
+  const { rows: existingRows } = await tx.query(
+    'SELECT 1 FROM project_member WHERE project_id = $1 AND user_id = $2',
+    [projectId, userId]
+  );
+  if (existingRows.length > 0) throw badRequest('User is already a project member');
+
+  const { rows } = await tx.query(
+    `INSERT INTO project_member (project_id, user_id, role, can_raise, can_be_assigned)
+     VALUES ($1, $2, $3, $4, $5)
+     RETURNING project_id, user_id, role, can_raise, can_be_assigned, created_at`,
+    [projectId, userId, role, canRaise, canBeAssigned]
+  );
+
+  const r = rows[0];
+  return {
+    projectId: r.project_id,
+    userId: r.user_id,
+    role: r.role,
+    canRaise: r.can_raise,
+    canBeAssigned: r.can_be_assigned,
+    createdAt: r.created_at,
+  };
+}
+
+/**
+ * Update project member (ADMIN only)
+ */
+export async function updateProjectMember(
+  tx: PoolClient,
+  projectId: string,
+  userId: string,
+  organizationId: string,
+  updates: { role?: 'MEMBER' | 'MANAGER' | 'VIEWER'; canRaise?: boolean; canBeAssigned?: boolean }
+): Promise<ProjectMemberResult> {
+  // Verify project exists in organization
+  const { rows: projectRows } = await tx.query(
+    `SELECT 1 FROM project p
+     JOIN client c ON c.id = p.client_id
+     WHERE p.id = $1 AND c.organization_id = $2`,
+    [projectId, organizationId]
+  );
+  if (projectRows.length === 0) throw notFound('Project not found');
+
+  const updateFields: string[] = [];
+  const params: any[] = [];
+  let paramIndex = 1;
+
+  if (updates.role !== undefined) {
+    updateFields.push(`role = $${paramIndex}`);
+    params.push(updates.role);
+    paramIndex++;
+  }
+
+  if (updates.canRaise !== undefined) {
+    updateFields.push(`can_raise = $${paramIndex}`);
+    params.push(updates.canRaise);
+    paramIndex++;
+  }
+
+  if (updates.canBeAssigned !== undefined) {
+    updateFields.push(`can_be_assigned = $${paramIndex}`);
+    params.push(updates.canBeAssigned);
+    paramIndex++;
+  }
+
+  if (updateFields.length === 0) throw badRequest('No fields to update');
+
+  params.push(projectId, userId);
+  const { rows } = await tx.query(
+    `UPDATE project_member SET ${updateFields.join(', ')} 
+     WHERE project_id = $${paramIndex} AND user_id = $${paramIndex + 1}
+     RETURNING project_id, user_id, role, can_raise, can_be_assigned, created_at`,
+    params
+  );
+
+  if (rows.length === 0) throw notFound('Project member not found');
+
+  const r = rows[0];
+  return {
+    projectId: r.project_id,
+    userId: r.user_id,
+    role: r.role,
+    canRaise: r.can_raise,
+    canBeAssigned: r.can_be_assigned,
+    createdAt: r.created_at,
+  };
+}
+
+/**
+ * Remove project member (ADMIN only)
+ */
+export async function removeProjectMember(
+  tx: PoolClient,
+  projectId: string,
+  userId: string,
+  organizationId: string
+): Promise<void> {
+  // Verify project exists in organization
+  const { rows: projectRows } = await tx.query(
+    `SELECT 1 FROM project p
+     JOIN client c ON c.id = p.client_id
+     WHERE p.id = $1 AND c.organization_id = $2`,
+    [projectId, organizationId]
+  );
+  if (projectRows.length === 0) throw notFound('Project not found');
+
+  const { rows } = await tx.query(
+    'DELETE FROM project_member WHERE project_id = $1 AND user_id = $2 RETURNING project_id',
+    [projectId, userId]
+  );
+
+  if (rows.length === 0) throw notFound('Project member not found');
 }

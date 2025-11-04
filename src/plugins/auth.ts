@@ -9,9 +9,17 @@ export default fp(async (app) => {
   });
 
   app.addHook('onRequest', async (req, _res) => {
-    // Allow health + /auth/login unauthenticated
+    // Allow unauthenticated routes
     const path = (req.url || '').split('?')[0];
-    if (path === '/health' || path === '/auth/login' || path === '/' || path.startsWith('/docs')) return;
+    const unauthenticatedPaths = [
+      '/health',
+      '/auth/login',
+      '/auth/signup',
+      '/auth/client-signup',
+      '/auth/invite',
+      '/',
+    ];
+    if (unauthenticatedPaths.some(p => path === p) || path.startsWith('/docs')) return;
 
     const auth = req.headers.authorization;
     if (!auth?.startsWith('Bearer ')) throw unauthorized('Missing or invalid Authorization header');
@@ -22,11 +30,11 @@ export default fp(async (app) => {
     } catch {
       throw unauthorized('Invalid token');
     }
-    if (!decoded?.sub || !decoded?.tenantId || !decoded?.role) throw unauthorized('Invalid token');
+    if (!decoded?.sub || !decoded?.organizationId || !decoded?.role) throw unauthorized('Invalid token');
 
-    req.auth = {
+    req.user = {
       userId: decoded.sub,
-      tenantId: decoded.tenantId,
+      organizationId: decoded.organizationId,
       role: decoded.role,
       clientId: decoded.clientId ?? null,
     };

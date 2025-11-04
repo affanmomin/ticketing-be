@@ -1,48 +1,94 @@
 import { PoolClient } from 'pg';
 import { notFound } from '../utils/errors';
-import { uploadBuffer, deleteObject, signedGetUrl } from '../utils/s3';
 
-export async function listAttachments(tx: PoolClient, ticketId: string) {
-  const { rows } = await tx.query(
-    `select id, tenant_id as "tenantId", ticket_id as "ticketId", uploader_id as "uploaderId", filename, mime, size, s3_key as "s3Key", created_at as "createdAt"
-     from attachment where ticket_id=$1 order by created_at desc`,
-    [ticketId],
-  );
-  const enriched = await Promise.all(
-    rows.map(async (r) => ({ ...r, url: await signedGetUrl(r.s3Key, 3600) })),
-  );
-  return enriched;
+export interface AttachmentResult {
+  id: string;
+  ticketId: string;
+  uploadedBy: string;
+  fileName: string;
+  mimeType: string;
+  fileSize: number;
+  storageUrl: string;
+  createdAt: Date;
 }
 
-export async function uploadAttachment(
+export async function listAttachments(
   tx: PoolClient,
-  args: { ticketId: string; userId: string; file: { filename: string; mimetype: string; buffer: Buffer; size: number } },
-) {
-  const { rows: t } = await tx.query(
-    `select id, tenant_id as "tenantId", client_id as "clientId" from ticket where id=$1`,
-    [args.ticketId],
-  );
-  if (!t[0]) throw notFound('Ticket not found');
-  const key = `${t[0].tenantId}/${t[0].clientId}/tickets/${t[0].id}/${Date.now()}_${args.file.filename}`;
-  await uploadBuffer(key, args.file.buffer, args.file.mimetype);
+  ticketId: string
+): Promise<AttachmentResult[]> {
   const { rows } = await tx.query(
-    `
-    insert into attachment (id,tenant_id,ticket_id,uploader_id,filename,mime,size,s3_key)
-    values (gen_random_uuid(), $1,$2,$3,$4,$5,$6,$7)
-    returning id, tenant_id as "tenantId", ticket_id as "ticketId", uploader_id as "uploaderId", filename, mime, size, s3_key as "s3Key", created_at as "createdAt"
-  `,
-    [t[0].tenantId, args.ticketId, args.userId, args.file.filename, args.file.mimetype, args.file.size, key],
+    `SELECT id, ticket_id, uploaded_by, file_name, mime_type, file_size, storage_url, created_at
+     FROM ticket_attachment
+     WHERE ticket_id = $1
+     ORDER BY created_at DESC`,
+    [ticketId]
   );
-  return rows[0];
+
+  return rows.map(r => ({
+    id: r.id,
+    ticketId: r.ticket_id,
+    uploadedBy: r.uploaded_by,
+    fileName: r.file_name,
+    mimeType: r.mime_type,
+    fileSize: r.file_size,
+    storageUrl: r.storage_url,
+    createdAt: r.created_at,
+  }));
 }
 
-export async function deleteAttachment(tx: PoolClient, id: string) {
+export async function getPresignedUrl(
+  ticketId: string,
+  fileName: string,
+  mimeType: string
+): Promise<{ uploadUrl: string; key: string }> {
+  // TODO: Integrate with S3 or preferred storage provider
+  const key = `${ticketId}/${Date.now()}_${fileName}`;
+
+  return {
+    uploadUrl: `https://example-storage/presign?key=${encodeURIComponent(key)}&type=${encodeURIComponent(mimeType)}`,
+    key,
+  };
+}
+
+export async function confirmAttachment(
+  tx: PoolClient,
+  ticketId: string,
+  uploadedByUserId: string,
+  storageUrl: string,
+  fileName: string,
+  mimeType: string,
+  fileSize: number
+): Promise<AttachmentResult> {
   const { rows } = await tx.query(
-    `delete from attachment where id=$1
-     returning id, tenant_id as "tenantId", ticket_id as "ticketId", uploader_id as "uploaderId", filename, mime, size, s3_key as "s3Key", created_at as "createdAt"`,
-    [id],
+    `INSERT INTO ticket_attachment (ticket_id, uploaded_by, file_name, mime_type, file_size, storage_url)
+     VALUES ($1, $2, $3, $4, $5, $6)
+     RETURNING id, ticket_id, uploaded_by, file_name, mime_type, file_size, storage_url, created_at`,
+    [ticketId, uploadedByUserId, fileName, mimeType, fileSize, storageUrl]
   );
-  if (!rows[0]) throw notFound('Attachment not found');
-  await deleteObject(rows[0].s3Key);
-  return { ok: true };
+
+  const r = rows[0];
+  return {
+    id: r.id,
+    ticketId: r.ticket_id,
+    uploadedBy: r.uploaded_by,
+    fileName: r.file_name,
+    mimeType: r.mime_type,
+    fileSize: r.file_size,
+    storageUrl: r.storage_url,
+    createdAt: r.created_at,
+  };
+}
+
+export async function deleteAttachment(
+  tx: PoolClient,
+  attachmentId: string
+): Promise<void> {
+  const { rows } = await tx.query(
+    'DELETE FROM ticket_attachment WHERE id = $1 RETURNING id, storage_url',
+    [attachmentId]
+  );
+
+  if (rows.length === 0) throw notFound('Attachment not found');
+
+  // TODO: Delete from storage provider using rows[0].storage_url
 }

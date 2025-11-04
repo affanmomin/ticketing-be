@@ -1,35 +1,130 @@
 import { FastifyRequest, FastifyReply } from 'fastify';
-import { withRlsTx } from '../db/rls';
-import { parseLimitOffset } from '../utils/pagination';
-import { CreateClientBody, UpdateClientBody } from '../schemas/clients.schema';
-import { createClient, getClient, listClients, mapEmployeeToClient, updateClient } from '../services/clients.service';
+import { pool } from '../db/pool';
+import { listClients, getClient, createClient, updateClient } from '../services/clients.service';
+import { CreateClientBody, UpdateClientBody, ListClientsQuery } from '../schemas/clients.schema';
+import { IdParam } from '../schemas/common.schema';
+import { forbidden, unauthorized } from '../utils/errors';
 
+/**
+ * GET /clients - List clients in organization (ADMIN only)
+ */
 export async function listClientsCtrl(req: FastifyRequest, reply: FastifyReply) {
-  const { limit, offset } = parseLimitOffset(req.query);
-  return withRlsTx(req, async (tx) => {
-    const rows = await listClients(tx, { limit, offset }, req.auth!.role as any, req.auth!.clientId);
-    return reply.send({ items: rows, count: rows.length });
-  });
+  if (!req.user) throw unauthorized('Authentication required');
+  if (req.user.role !== 'ADMIN') throw forbidden('Only admins can list clients');
+
+  const query = ListClientsQuery.parse(req.query);
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const result = await listClients(
+      client,
+      req.user.organizationId,
+      query.limit,
+      query.offset
+    );
+
+    await client.query('COMMIT');
+    return reply.send(result);
+  } catch (e) {
+    try { await client.query('ROLLBACK'); } catch {}
+    throw e;
+  } finally {
+    client.release();
+  }
 }
 
+/**
+ * GET /clients/:id - Get single client (ADMIN only)
+ */
 export async function getClientCtrl(req: FastifyRequest, reply: FastifyReply) {
-  const id = (req.params as any).id as string;
-  return withRlsTx(req, async (tx) => reply.send(await getClient(tx, id)));
+  if (!req.user) throw unauthorized('Authentication required');
+  if (req.user.role !== 'ADMIN') throw forbidden('Only admins can view clients');
+
+  const { id: clientId } = IdParam.parse(req.params);
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const result = await getClient(client, clientId, req.user.organizationId);
+
+    await client.query('COMMIT');
+    return reply.send(result);
+  } catch (e) {
+    try { await client.query('ROLLBACK'); } catch {}
+    throw e;
+  } finally {
+    client.release();
+  }
 }
 
+/**
+ * POST /clients - Create client (ADMIN only)
+ */
 export async function createClientCtrl(req: FastifyRequest, reply: FastifyReply) {
+  if (!req.user) throw unauthorized('Authentication required');
+  if (req.user.role !== 'ADMIN') throw forbidden('Only admins can create clients');
+
   const body = CreateClientBody.parse(req.body);
-  return withRlsTx(req, async (tx) => reply.code(201).send(await createClient(tx, body, req.auth!.tenantId)));
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const result = await createClient(
+      client,
+      req.user.organizationId,
+      body.name,
+      body.email ?? null,
+      body.phone ?? null,
+      body.address ?? null
+    );
+
+    await client.query('COMMIT');
+    return reply.code(201).send(result);
+  } catch (e) {
+    try { await client.query('ROLLBACK'); } catch {}
+    throw e;
+  } finally {
+    client.release();
+  }
 }
 
+/**
+ * PATCH /clients/:id - Update client (ADMIN only)
+ */
 export async function updateClientCtrl(req: FastifyRequest, reply: FastifyReply) {
-  const id = (req.params as any).id as string;
-  const body = UpdateClientBody.parse(req.body);
-  return withRlsTx(req, async (tx) => reply.send(await updateClient(tx, id, body)));
-}
+  if (!req.user) throw unauthorized('Authentication required');
+  if (req.user.role !== 'ADMIN') throw forbidden('Only admins can update clients');
 
-export async function mapEmployeeCtrl(req: FastifyRequest, reply: FastifyReply) {
-  const id = (req.params as any).id as string;
-  const { userId } = req.body as any;
-  return withRlsTx(req, async (tx) => reply.send(await mapEmployeeToClient(tx, userId, id, req.auth!.tenantId)));
+  const { id: clientId } = IdParam.parse(req.params);
+  const body = UpdateClientBody.parse(req.body);
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const result = await updateClient(
+      client,
+      clientId,
+      req.user.organizationId,
+      {
+        name: body.name,
+        email: body.email ?? null,
+        phone: body.phone ?? null,
+        address: body.address ?? null,
+        active: body.active,
+      }
+    );
+
+    await client.query('COMMIT');
+    return reply.send(result);
+  } catch (e) {
+    try { await client.query('ROLLBACK'); } catch {}
+    throw e;
+  } finally {
+    client.release();
+  }
 }

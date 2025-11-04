@@ -1,9 +1,18 @@
 import { FastifyInstance } from 'fastify';
-import { getTicketsCtrl, getTicketCtrl, createTicketCtrl, updateTicketCtrl } from '../controllers/tickets.controller';
+import {
+  listTicketsCtrl,
+  getTicketCtrl,
+  createTicketCtrl,
+  updateTicketCtrl,
+  deleteTicketCtrl,
+} from '../controllers/tickets.controller';
+import { ListTicketsQuery, CreateTicketBody, UpdateTicketBody } from '../schemas/tickets.schema';
+import { IdParam } from '../schemas/common.schema';
 
 export default async function ticketsRoutes(app: FastifyInstance) {
-  app.get('/tickets', getTicketsCtrl);
-  app.get('/tickets/:id', getTicketCtrl);
-  app.post('/tickets', createTicketCtrl);
-  app.post('/tickets-update/:id', updateTicketCtrl);
+  app.get('/tickets', { schema: { querystring: ListTicketsQuery } }, listTicketsCtrl);
+  app.get('/tickets/:id', { schema: { params: IdParam } }, getTicketCtrl);
+  app.post('/tickets', { schema: { body: CreateTicketBody } }, createTicketCtrl);
+  app.patch('/tickets/:id', { schema: { params: IdParam, body: UpdateTicketBody } }, updateTicketCtrl);
+  app.delete('/tickets/:id', { schema: { params: IdParam } }, deleteTicketCtrl);
 }

@@ -4,7 +4,7 @@ import { AuthContext } from './common';
 
 declare module 'fastify' {
   interface FastifyRequest {
-    auth?: AuthContext;
+    user?: AuthContext;
     db?: { tx: PoolClient };
   }
 }

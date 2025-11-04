@@ -1,19 +1,28 @@
 import { FastifyRequest, FastifyReply } from 'fastify';
-import { withRlsTx } from '../db/rls';
-import { CreateTagBody } from '../schemas/tags.schema';
-import { createTag, deleteTag, listTags } from '../services/tags.service';
+import { pool } from '../db/pool';
+import { listPriorities, listStatuses } from '../services/tags.service';
+import { unauthorized } from '../utils/errors';
 
-export async function listTagsCtrl(req: FastifyRequest, reply: FastifyReply) {
-  const clientId = (req.query as any).clientId as string | undefined;
-  return withRlsTx(req, async (tx) => reply.send(await listTags(tx, clientId)));
+export async function listPrioritiesCtrl(req: FastifyRequest, reply: FastifyReply) {
+  if (!req.user) throw unauthorized('Authentication required');
+
+  const client = await pool.connect();
+  try {
+    const result = await listPriorities(client);
+    return reply.send(result);
+  } finally {
+    client.release();
+  }
 }
 
-export async function createTagCtrl(req: FastifyRequest, reply: FastifyReply) {
-  const body = CreateTagBody.parse(req.body);
-  return withRlsTx(req, async (tx) => reply.code(201).send(await createTag(tx, body, req.auth!.tenantId)));
-}
+export async function listStatusesCtrl(req: FastifyRequest, reply: FastifyReply) {
+  if (!req.user) throw unauthorized('Authentication required');
 
-export async function deleteTagCtrl(req: FastifyRequest, reply: FastifyReply) {
-  const id = (req.params as any).id as string;
-  return withRlsTx(req, async (tx) => reply.send(await deleteTag(tx, id)));
+  const client = await pool.connect();
+  try {
+    const result = await listStatuses(client);
+    return reply.send(result);
+  } finally {
+    client.release();
+  }
 }

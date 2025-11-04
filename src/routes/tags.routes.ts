@@ -1,8 +1,7 @@
 import { FastifyInstance } from 'fastify';
-import { listTagsCtrl, createTagCtrl, deleteTagCtrl } from '../controllers/tags.controller';
+import { listPrioritiesCtrl, listStatusesCtrl } from '../controllers/tags.controller';
 
 export default async function tagsRoutes(app: FastifyInstance) {
-  app.get('/tags', listTagsCtrl);
-  app.post('/tags', createTagCtrl);
-  app.delete('/tags/:id', deleteTagCtrl);
+  app.get('/taxonomy/priority', listPrioritiesCtrl);
+  app.get('/taxonomy/status', listStatusesCtrl);
 }
