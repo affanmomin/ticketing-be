@@ -68,11 +68,11 @@ export async function listUsers(
   params.push(limit, offset);
   const { rows } = await tx.query(
     `SELECT
-      id, organization_id, client_id, user_type, email, full_name,
-      is_active, created_at, updated_at
-     FROM app_user
+      au.id, au.organization_id, au.client_id, au.user_type, au.email, au.full_name,
+      au.is_active, au.created_at, au.updated_at
+     FROM app_user au
      WHERE ${whereClause}
-     ORDER BY created_at DESC
+     ORDER BY au.created_at DESC
      LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`,
     params
   );
