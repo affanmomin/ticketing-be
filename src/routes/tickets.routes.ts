@@ -13,6 +13,6 @@ export default async function ticketsRoutes(app: FastifyInstance) {
   app.get('/tickets', { schema: { querystring: ListTicketsQuery } }, listTicketsCtrl);
   app.get('/tickets/:id', { schema: { params: IdParam } }, getTicketCtrl);
   app.post('/tickets', { schema: { body: CreateTicketBody } }, createTicketCtrl);
-  app.patch('/tickets/:id', { schema: { params: IdParam, body: UpdateTicketBody } }, updateTicketCtrl);
+  app.post('/tickets/:id', { schema: { params: IdParam, body: UpdateTicketBody } }, updateTicketCtrl);
   app.delete('/tickets/:id', { schema: { params: IdParam } }, deleteTicketCtrl);
 }

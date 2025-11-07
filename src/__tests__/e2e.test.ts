@@ -175,7 +175,7 @@ test('end-to-end workflow', async () => {
   // Update ticket status (admin)
   const newStatusId = statusRes.body.find((s: any) => s.id !== statusId)?.id ?? statusId;
   const updateTicketRes = await request
-    .patch(`/tickets/${ticketId}`)
+    .post(`/tickets/${ticketId}`)
     .set('Authorization', `Bearer ${adminToken}`)
     .send({ statusId: newStatusId });
   assert.equal(updateTicketRes.status, 200, `Update ticket failed: ${updateTicketRes.text}`);

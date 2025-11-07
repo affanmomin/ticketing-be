@@ -106,7 +106,7 @@ async function main() {
   });
 
   await runStep('clients:update', async () => {
-    const res = await http.patch(`/clients/${clientId}`, { domain: `updated-${randomSuffix()}.test` });
+    const res = await http.post(`/clients/${clientId}`, { domain: `updated-${randomSuffix()}.test` });
     if (res.status !== 200) throw new Error(`/clients update ${res.status}`);
     return res.data;
   });
@@ -144,7 +144,7 @@ async function main() {
   });
 
   await runStep('projects:update', async () => {
-    const res = await http.patch(`/projects/${projectId}`, { name: `Project QA Updated ${randomSuffix()}` });
+    const res = await http.post(`/projects/${projectId}`, { name: `Project QA Updated ${randomSuffix()}` });
     if (res.status !== 200) throw new Error(`/projects update ${res.status}`);
     return res.data;
   });
@@ -164,7 +164,7 @@ async function main() {
   });
 
   await runStep('streams:update', async () => {
-    const res = await http.patch(`/streams/${streamId}`, { name: `Stream QA Updated ${randomSuffix()}` });
+    const res = await http.post(`/streams/${streamId}`, { name: `Stream QA Updated ${randomSuffix()}` });
     if (res.status !== 200) throw new Error(`/streams update ${res.status}`);
     return res.data;
   });
@@ -218,7 +218,7 @@ async function main() {
     if (authedRole === 'ADMIN' || authedRole === 'EMPLOYEE') {
       updateBody.status = 'IN_PROGRESS';
     }
-    const res = await http.patch(`/tickets/${ticketId}`, updateBody);
+    const res = await http.post(`/tickets/${ticketId}`, updateBody);
     if (res.status !== 200) throw new Error(`/tickets update ${res.status}`);
     return res.data;
   });

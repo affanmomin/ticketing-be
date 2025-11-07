@@ -28,7 +28,7 @@ export default async function usersRoutes(app: FastifyInstance) {
   app.post('/client-users', createClientUserCtrl);
 
   // Update user
-  app.patch('/users/:id', { schema: { params: IdParam } }, updateUserCtrl);
+  app.post('/users/:id', { schema: { params: IdParam } }, updateUserCtrl);
 
   // Change password (self)
   app.post('/users/:id/password', { schema: { params: IdParam } }, changePasswordCtrl);

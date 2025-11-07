@@ -12,5 +12,5 @@ export default async function subjectsRoutes(app: FastifyInstance) {
   app.get('/clients/:id/subjects', { schema: { params: IdParam, querystring: ListSubjectsQuery } }, listSubjectsCtrl);
   app.get('/subjects/:id', { schema: { params: IdParam } }, getSubjectCtrl);
   app.post('/clients/:id/subjects', { schema: { params: IdParam, body: CreateSubjectBody } }, createSubjectCtrl);
-  app.patch('/subjects/:id', { schema: { params: IdParam, body: UpdateSubjectBody } }, updateSubjectCtrl);
+  app.post('/subjects/:id', { schema: { params: IdParam, body: UpdateSubjectBody } }, updateSubjectCtrl);
 }
