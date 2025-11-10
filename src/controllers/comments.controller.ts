@@ -1,60 +1,45 @@
 import { FastifyRequest, FastifyReply } from 'fastify';
-import { pool } from '../db/pool';
 import { listComments, createComment, getComment } from '../services/comments.service';
 import { CreateCommentBody } from '../schemas/comments.schema';
 import { IdParam } from '../schemas/common.schema';
 import { forbidden, unauthorized } from '../utils/errors';
+import { withReadOnly, withTransaction } from '../db/helpers';
 
 /**
  * GET /tickets/:ticketId/comments
+ * Read-only operation - no transaction needed
  */
 export async function listCommentsCtrl(req: FastifyRequest, reply: FastifyReply) {
   if (!req.user) throw unauthorized('Authentication required');
 
   const { id: ticketId } = IdParam.parse(req.params);
 
-  const client = await pool.connect();
-  try {
-    await client.query('BEGIN');
+  const comments = await withReadOnly(async (client) => {
+    return await listComments(client, ticketId, req.user!.role);
+  });
 
-    const comments = await listComments(client, ticketId, req.user.role);
-
-    await client.query('COMMIT');
-    return reply.send(comments);
-  } catch (e) {
-    try { await client.query('ROLLBACK'); } catch {}
-    throw e;
-  } finally {
-    client.release();
-  }
+  return reply.send(comments);
 }
 
 /**
  * GET /comments/:id
+ * Read-only operation - no transaction needed
  */
 export async function getCommentCtrl(req: FastifyRequest, reply: FastifyReply) {
   if (!req.user) throw unauthorized('Authentication required');
 
   const { id: commentId } = IdParam.parse(req.params);
 
-  const client = await pool.connect();
-  try {
-    await client.query('BEGIN');
+  const comment = await withReadOnly(async (client) => {
+    return await getComment(client, commentId, req.user!.role);
+  });
 
-    const comment = await getComment(client, commentId, req.user.role);
-
-    await client.query('COMMIT');
-    return reply.send(comment);
-  } catch (e) {
-    try { await client.query('ROLLBACK'); } catch {}
-    throw e;
-  } finally {
-    client.release();
-  }
+  return reply.send(comment);
 }
 
 /**
  * POST /tickets/:ticketId/comments
+ * Write operation - transaction required
  */
 export async function createCommentCtrl(req: FastifyRequest, reply: FastifyReply) {
   if (!req.user) throw unauthorized('Authentication required');
@@ -67,25 +52,16 @@ export async function createCommentCtrl(req: FastifyRequest, reply: FastifyReply
     throw forbidden('CLIENT users can only create PUBLIC comments');
   }
 
-  const client = await pool.connect();
-  try {
-    await client.query('BEGIN');
-
-    const comment = await createComment(
+  const comment = await withTransaction(async (client) => {
+    return await createComment(
       client,
       ticketId,
-      req.user.userId,
-      req.user.role,
+      req.user!.userId,
+      req.user!.role,
       body.visibility,
       body.bodyMd
     );
+  });
 
-    await client.query('COMMIT');
-    return reply.code(201).send(comment);
-  } catch (e) {
-    try { await client.query('ROLLBACK'); } catch {}
-    throw e;
-  } finally {
-    client.release();
-  }
+  return reply.code(201).send(comment);
 }

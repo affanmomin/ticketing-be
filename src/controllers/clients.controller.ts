@@ -1,42 +1,35 @@
 import { FastifyRequest, FastifyReply } from 'fastify';
-import { pool } from '../db/pool';
 import { listClients, getClient, createClient, updateClient } from '../services/clients.service';
 import { CreateClientBody, UpdateClientBody, ListClientsQuery } from '../schemas/clients.schema';
 import { IdParam } from '../schemas/common.schema';
 import { forbidden, unauthorized } from '../utils/errors';
 import { emailService } from '../services/email.service';
+import { withReadOnly, withTransaction } from '../db/helpers';
 
 /**
  * GET /clients - List clients in organization (ADMIN only)
+ * Read-only operation - no transaction needed
  */
 export async function listClientsCtrl(req: FastifyRequest, reply: FastifyReply) {
   if (!req.user) throw unauthorized('Authentication required');
 
   const query = ListClientsQuery.parse(req.query);
 
-  const client = await pool.connect();
-  try {
-    await client.query('BEGIN');
-
-    const result = await listClients(
+  const result = await withReadOnly(async (client) => {
+    return await listClients(
       client,
-      req.user.organizationId,
+      req.user!.organizationId,
       query.limit,
       query.offset
     );
+  });
 
-    await client.query('COMMIT');
-    return reply.send(result);
-  } catch (e) {
-    try { await client.query('ROLLBACK'); } catch {}
-    throw e;
-  } finally {
-    client.release();
-  }
+  return reply.send(result);
 }
 
 /**
  * GET /clients/:id - Get single client (ADMIN only)
+ * Read-only operation - no transaction needed
  */
 export async function getClientCtrl(req: FastifyRequest, reply: FastifyReply) {
   if (!req.user) throw unauthorized('Authentication required');
@@ -44,24 +37,16 @@ export async function getClientCtrl(req: FastifyRequest, reply: FastifyReply) {
 
   const { id: clientId } = IdParam.parse(req.params);
 
-  const client = await pool.connect();
-  try {
-    await client.query('BEGIN');
+  const result = await withReadOnly(async (client) => {
+    return await getClient(client, clientId, req.user!.organizationId);
+  });
 
-    const result = await getClient(client, clientId, req.user.organizationId);
-
-    await client.query('COMMIT');
-    return reply.send(result);
-  } catch (e) {
-    try { await client.query('ROLLBACK'); } catch {}
-    throw e;
-  } finally {
-    client.release();
-  }
+  return reply.send(result);
 }
 
 /**
  * POST /clients - Create client (ADMIN only)
+ * Write operation - transaction required
  */
 export async function createClientCtrl(req: FastifyRequest, reply: FastifyReply) {
   if (!req.user) throw unauthorized('Authentication required');
@@ -69,37 +54,28 @@ export async function createClientCtrl(req: FastifyRequest, reply: FastifyReply)
 
   const body = CreateClientBody.parse(req.body);
 
-  const client = await pool.connect();
-  try {
-    await client.query('BEGIN');
-
-    const result = await createClient(
+  const result = await withTransaction(async (client) => {
+    return await createClient(
       client,
-      req.user.organizationId,
+      req.user!.organizationId,
       body.name,
       body.email ?? null,
       body.phone ?? null,
       body.address ?? null
     );
+  });
 
-    await client.query('COMMIT');
-
-    // Send notification email if client has an email
-    if (result.email) {
-      await emailService.sendClientNotificationEmail(result.name, result.email);
-    }
-
-    return reply.code(201).send(result);
-  } catch (e) {
-    try { await client.query('ROLLBACK'); } catch {}
-    throw e;
-  } finally {
-    client.release();
+  // Send notification email if client has an email (outside transaction)
+  if (result.email) {
+    await emailService.sendClientNotificationEmail(result.name, result.email);
   }
+
+  return reply.code(201).send(result);
 }
 
 /**
  * PATCH /clients/:id - Update client (ADMIN only)
+ * Write operation - transaction required
  */
 export async function updateClientCtrl(req: FastifyRequest, reply: FastifyReply) {
   if (!req.user) throw unauthorized('Authentication required');
@@ -108,14 +84,11 @@ export async function updateClientCtrl(req: FastifyRequest, reply: FastifyReply)
   const { id: clientId } = IdParam.parse(req.params);
   const body = UpdateClientBody.parse(req.body);
 
-  const client = await pool.connect();
-  try {
-    await client.query('BEGIN');
-
-    const result = await updateClient(
+  const result = await withTransaction(async (client) => {
+    return await updateClient(
       client,
       clientId,
-      req.user.organizationId,
+      req.user!.organizationId,
       {
         name: body.name,
         email: body.email ?? null,
@@ -124,13 +97,7 @@ export async function updateClientCtrl(req: FastifyRequest, reply: FastifyReply)
         active: body.active,
       }
     );
+  });
 
-    await client.query('COMMIT');
-    return reply.send(result);
-  } catch (e) {
-    try { await client.query('ROLLBACK'); } catch {}
-    throw e;
-  } finally {
-    client.release();
-  }
+  return reply.send(result);
 }

@@ -19,12 +19,19 @@ test('end-to-end workflow', async () => {
   if (!constraintEnsured) {
     const client = await pool.connect();
     try {
+      // Drop constraint if it exists
       await client.query(
         `ALTER TABLE app_user DROP CONSTRAINT IF EXISTS app_user_user_type_check;`
       );
-      await client.query(
-        `ALTER TABLE app_user ADD CONSTRAINT app_user_user_type_check CHECK (user_type IN ('ADMIN','EMPLOYEE','CLIENT'));`
-      );
+      // Add constraint (will fail silently if already exists, but we just dropped it)
+      try {
+        await client.query(
+          `ALTER TABLE app_user ADD CONSTRAINT app_user_user_type_check CHECK (user_type IN ('ADMIN','EMPLOYEE','CLIENT'));`
+        );
+      } catch (err: any) {
+        // Ignore if constraint already exists (race condition)
+        if (err.code !== '42710') throw err;
+      }
       constraintEnsured = true;
     } finally {
       client.release();

@@ -11,6 +11,7 @@ import comments from './comments.routes';
 import tags from './tags.routes';
 import attachments from './attachments.routes';
 import outbox from './outbox.routes';
+import dashboard from './dashboard.routes';
 
 export default async function registerRoutes(app: FastifyInstance) {
   await app.register(auth);
@@ -25,4 +26,5 @@ export default async function registerRoutes(app: FastifyInstance) {
   await app.register(tags);
   await app.register(attachments);
   await app.register(outbox);
+  await app.register(dashboard);
 }

@@ -12,6 +12,7 @@
     "db:seed": "ts-node -r dotenv/config scripts/seed.ts",
     "db:init": "ts-node -r dotenv/config scripts/init-db.ts",
     "db:create-admin": "ts-node -r dotenv/config scripts/create-admin.ts",
+    "db:populate-demo": "ts-node -r dotenv/config scripts/populate-demo-data.ts",
     "docker:build": "docker build --build-arg PORT=3000 -t code-companion-node-ts-template .",
     "docker:run": "docker run -p  code-companion-node-ts-template",
     "test:routes": "ts-node -r dotenv/config scripts/test-all-routes.ts"

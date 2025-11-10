@@ -639,9 +639,16 @@ export async function deleteTicket(
   ticketId: string,
   deletedByUserId: string
 ): Promise<void> {
-  const { rows } = await tx.query(
+  // First check if ticket exists
+  const { rows: checkRows } = await tx.query(
+    'SELECT id FROM ticket WHERE id = $1 AND is_deleted = false',
+    [ticketId]
+  );
+  if (checkRows.length === 0) throw notFound('Ticket not found');
+
+  // Soft delete the ticket (no event needed for soft delete)
+  await tx.query(
     'UPDATE ticket SET is_deleted = true WHERE id = $1',
     [ticketId]
   );
-  if (rows.length === 0) throw notFound('Ticket not found');
 }

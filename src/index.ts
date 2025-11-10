@@ -1,4 +1,4 @@
-import client from './db/pool';
+import { pool } from './db/pool';
 import server from './server';
 import { startNotificationProcessor } from './jobs/notification-processor';
 
@@ -6,7 +6,10 @@ const port = Number(process.env.PORT) || 3000;
 async function connectDB() {
   try {
     console.log('Connecting to Supabase PostgreSQL...');
-    await client.connect();
+    // Test connection by getting a client from the pool
+    const testClient = await pool.connect();
+    await testClient.query('SELECT 1');
+    testClient.release();
     console.log('Connected to Supabase PostgreSQL!');
   } catch (err) {
     console.error('Connection error:', err);
