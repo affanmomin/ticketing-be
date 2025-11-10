@@ -61,7 +61,7 @@ export async function getTicketCtrl(req: FastifyRequest, reply: FastifyReply) {
   try {
     await client.query('BEGIN');
 
-    const ticket = await getTicket(client, ticketId);
+    const ticket = await getTicket(client, ticketId, req.user.role, req.user.userId, req.user.clientId ?? null);
 
     await client.query('COMMIT');
     return reply.send(ticket);

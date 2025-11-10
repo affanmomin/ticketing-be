@@ -6,7 +6,6 @@ interface EmailUser {
   email: string;
   name: string;
   userType: string;
-  tenantId: string;
 }
 
 interface WelcomeEmailData extends EmailUser {
@@ -42,7 +41,7 @@ class EmailService {
   async sendWelcomeEmail(userData: WelcomeEmailData): Promise<void> {
     try {
       const isClient = userData.userType === 'CLIENT';
-      const subject = isClient 
+      const subject = isClient
         ? 'Welcome to Our Ticketing System - Client Account Created'
         : 'Welcome to Our Ticketing System - Your Account Has Been Created';
 
@@ -64,6 +63,90 @@ class EmailService {
     }
   }
 
+  /**
+   * Send notification email to newly created client (no login credentials)
+   */
+  async sendClientNotificationEmail(clientName: string, clientEmail: string): Promise<void> {
+    try {
+      const baseUrl = process.env.APP_BASE_URL || 'http://localhost:5173';
+      const loginUrl = `${baseUrl}/login`;
+
+      const htmlContent = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>Client Account Created</title>
+          <style>
+            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; }
+            .header { background-color: #007bff; color: white; padding: 20px; text-align: center; border-radius: 5px; }
+            .content { padding: 20px; background-color: #f9f9f9; border-radius: 5px; margin: 20px 0; }
+            .button { display: inline-block; padding: 12px 24px; background-color: #007bff; color: white; text-decoration: none; border-radius: 5px; margin: 10px 0; }
+            .footer { text-align: center; color: #666; font-size: 12px; margin-top: 30px; }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            <h1>Client Account Created</h1>
+          </div>
+
+          <div class="content">
+            <h2>Hello ${clientName},</h2>
+
+            <p>Your client account has been successfully created in our ticketing system.</p>
+
+            <p>You can access the ticketing system using the link below:</p>
+
+            <a href="${loginUrl}" class="button">Access Ticketing System</a>
+
+            <p>If you have any questions or need assistance, please don't hesitate to contact our support team.</p>
+
+            <p>Best regards,<br>The Ticketing System Team</p>
+          </div>
+
+          <div class="footer">
+            <p>This is an automated message. Please do not reply to this email.</p>
+            <p>If you didn't expect this email, please contact our support team immediately.</p>
+          </div>
+        </body>
+        </html>
+      `;
+
+      const textContent = `
+Client Account Created
+
+Hello ${clientName},
+
+Your client account has been successfully created in our ticketing system.
+
+You can access the ticketing system at: ${loginUrl}
+
+If you have any questions or need assistance, please don't hesitate to contact our support team.
+
+Best regards,
+The Ticketing System Team
+
+---
+This is an automated message. Please do not reply to this email.
+If you didn't expect this email, please contact our support team immediately.
+      `.trim();
+
+      await this.transporter.sendMail({
+        from: process.env.SMTP_FROM || '"Ticketing System" <noreply@example.com>',
+        to: clientEmail,
+        subject: 'Client Account Created - Ticketing System',
+        text: textContent,
+        html: htmlContent,
+      });
+
+      console.log(`Client notification email sent successfully to ${clientEmail}`);
+    } catch (error) {
+      console.error(`Failed to send client notification email to ${clientEmail}:`, error);
+      // Don't throw error to avoid failing client creation if email fails
+    }
+  }
+
 
 
   /**
@@ -71,11 +154,11 @@ class EmailService {
    */
   private generateWelcomeEmailHtml(userData: WelcomeEmailData, isClient: boolean = false): string {
     const baseUrl = process.env.APP_BASE_URL || 'http://localhost:5173';
-    
+
     // Create login URL with encoded credentials if password is provided
     let loginUrl = `${baseUrl}/login`;
     if (userData.password) {
-      const encodedCreds = encodeCredentials(userData.email, userData.password, userData.tenantId);
+      const encodedCreds = encodeCredentials(userData.email, userData.password);
       loginUrl = `${baseUrl}/login?creds=${encodeURIComponent(encodedCreds)}`;
     }
 
@@ -100,38 +183,38 @@ class EmailService {
         <div class="header">
           <h1>Welcome to Our Ticketing System!</h1>
         </div>
-        
+
         <div class="content">
           <h2>Hello ${userData.name},</h2>
-          
+
           <p>Your ${isClient ? 'client' : 'team member'} account has been successfully created in our ticketing system.</p>
-          
+
           <h3>Account Details:</h3>
           <div class="credentials">
             <strong>Email:</strong> ${userData.email}<br>
             <strong>Account Type:</strong> ${userData.userType}
             ${userData.password ? `<br><strong>Password:</strong> ${userData.password}` : ''}
           </div>
-          
-          ${userData.password ? 
-            '<div class="auto-login-note"><strong>Convenient Login:</strong> Click the login button below and your credentials will be automatically filled in for you!</div>' : 
+
+          ${userData.password ?
+            '<div class="auto-login-note"><strong>Convenient Login:</strong> Click the login button below and your credentials will be automatically filled in for you!</div>' :
             ''
           }
-          
-          ${userData.password ? 
-            '<p><strong>Security Note:</strong> Please change your password after your first login for enhanced security.</p>' : 
+
+          ${userData.password ?
+            '<p><strong>Security Note:</strong> Please change your password after your first login for enhanced security.</p>' :
             ''
           }
-          
+
           <p>You can now access the ticketing system using the link below:</p>
-          
+
           <a href="${loginUrl}" class="button">${userData.password ? 'Login with Auto-Fill' : 'Login to System'}</a>
-          
+
           <p>If you have any questions or need assistance, please don't hesitate to contact our support team.</p>
-          
+
           <p>Best regards,<br>The Ticketing System Team</p>
         </div>
-        
+
         <div class="footer">
           <p>This is an automated message. Please do not reply to this email.</p>
           <p>If you didn't expect this email, please contact our support team immediately.</p>
@@ -146,11 +229,11 @@ class EmailService {
    */
   private generateWelcomeEmailText(userData: WelcomeEmailData, isClient: boolean = false): string {
     const baseUrl = process.env.APP_BASE_URL || 'http://localhost:5173';
-    
+
     // Create login URL with encoded credentials if password is provided
     let loginUrl = `${baseUrl}/login`;
     if (userData.password) {
-      const encodedCreds = encodeCredentials(userData.email, userData.password, userData.tenantId);
+      const encodedCreds = encodeCredentials(userData.email, userData.password);
       loginUrl = `${baseUrl}/login?creds=${encodeURIComponent(encodedCreds)}`;
     }
 
@@ -166,13 +249,13 @@ Account Details:
 - Account Type: ${userData.userType}
 ${userData.password ? `- Password: ${userData.password}` : ''}
 
-${userData.password ? 
-  'Convenient Login: Use the link below and your credentials will be automatically filled in!\n' : 
+${userData.password ?
+  'Convenient Login: Use the link below and your credentials will be automatically filled in!\n' :
   ''
 }
 
-${userData.password ? 
-  'Security Note: Please change your password after your first login for enhanced security.\n' : 
+${userData.password ?
+  'Security Note: Please change your password after your first login for enhanced security.\n' :
   ''
 }
 

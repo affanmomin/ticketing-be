@@ -11,6 +11,7 @@ import {
 import { CreateEmployeeBody, CreateClientUserBody, UpdateUserBody, ListUsersQuery } from '../schemas/users.schema';
 import { IdParam } from '../schemas/common.schema';
 import { forbidden, unauthorized } from '../utils/errors';
+import { emailService } from '../services/email.service';
 
 /**
  * GET /users - List users in organization (ADMIN/EMPLOYEE only)
@@ -100,6 +101,16 @@ export async function createEmployeeCtrl(req: FastifyRequest, reply: FastifyRepl
     );
 
     await client.query('COMMIT');
+
+    // Send welcome email with login credentials
+    await emailService.sendWelcomeEmail({
+      id: result.id,
+      email: result.email,
+      name: result.fullName,
+      userType: result.userType,
+      password: body.password,
+    });
+
     return reply.code(201).send(result);
   } catch (e) {
     try { await client.query('ROLLBACK'); } catch {}
@@ -132,6 +143,16 @@ export async function createClientUserCtrl(req: FastifyRequest, reply: FastifyRe
     );
 
     await client.query('COMMIT');
+
+    // Send welcome email with login credentials
+    await emailService.sendWelcomeEmail({
+      id: result.id,
+      email: result.email,
+      name: result.fullName,
+      userType: result.userType,
+      password: body.password,
+    });
+
     return reply.code(201).send(result);
   } catch (e) {
     try { await client.query('ROLLBACK'); } catch {}
