@@ -1,6 +1,7 @@
 import { PoolClient } from 'pg';
 import { badRequest, notFound, forbidden } from '../utils/errors';
 import { Role } from '../types/common';
+import { emailService } from './email.service';
 
 export interface TicketResult {
   id: string;
@@ -287,6 +288,24 @@ export async function createTicket(
   );
 
   const details = detailsRows[0];
+
+  // Send email notification if ticket is assigned to a user
+  if (ticket.assigned_to_user_id && details.assigned_to_email && details.assigned_to_name) {
+    // Send email asynchronously (don't await to avoid blocking ticket creation)
+    // Note: ticketDescription and ticketId parameters are kept for API compatibility but not used in email
+    emailService.sendTicketCreatedEmail(
+      details.assigned_to_email,
+      details.assigned_to_name,
+      ticket.title,
+      ticket.description_md,
+      details.raised_by_name,
+      details.project_name,
+      ticket.id
+    ).catch((error) => {
+      // Error is already logged in the email service, but we log here too for visibility
+      console.error(`Failed to send ticket creation email for ticket ${ticket.id}:`, error);
+    });
+  }
 
   return {
     id: ticket.id,

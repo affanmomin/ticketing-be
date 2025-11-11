@@ -676,6 +676,203 @@ This password reset link will expire in 1 hour for security reasons.
     `.trim();
   }
 
+  /**
+   * Send ticket creation notification email
+   */
+  async sendTicketCreatedEmail(
+    assignedToEmail: string,
+    assignedToName: string,
+    ticketTitle: string,
+    _ticketDescription: string | null, // Not used in email, kept for API compatibility
+    raisedByName: string,
+    projectName: string,
+    _ticketId: string // Not used in email, kept for API compatibility
+  ): Promise<void> {
+    try {
+      const subject = `New Ticket Assigned: ${ticketTitle}`;
+
+      const htmlContent = this.generateTicketCreatedEmailHtml(
+        assignedToName,
+        ticketTitle,
+        raisedByName,
+        projectName
+      );
+      const textContent = this.generateTicketCreatedEmailText(
+        assignedToName,
+        ticketTitle,
+        raisedByName,
+        projectName
+      );
+
+      await this.transporter.sendMail({
+        from: process.env.SMTP_FROM || '"Ticketing System" <noreply@example.com>',
+        to: assignedToEmail,
+        subject: subject,
+        text: textContent,
+        html: htmlContent,
+      });
+
+      console.log(`Ticket creation email sent successfully to ${assignedToEmail}`);
+    } catch (error) {
+      console.error(`Failed to send ticket creation email to ${assignedToEmail}:`, error);
+      // Don't throw error to avoid failing ticket creation if email fails
+    }
+  }
+
+  private generateTicketCreatedEmailHtml(
+    assignedToName: string,
+    ticketTitle: string,
+    raisedByName: string,
+    projectName: string
+  ): string {
+    return `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>New Ticket Assigned - Ticketing System</title>
+      </head>
+      <body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Helvetica Neue', Arial, sans-serif; background: linear-gradient(135deg, #4c63d2 0%, #5a3d7a 100%); padding: 40px 20px;">
+        <table cellpadding="0" cellspacing="0" border="0" width="100%" style="max-width: 640px; margin: 0 auto;">
+
+          <!-- Spacer -->
+          <tr>
+            <td style="height: 20px;"></td>
+          </tr>
+
+          <!-- Main Card -->
+          <tr>
+            <td style="background-color: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 20px 60px rgba(0,0,0,0.15);">
+
+              <!-- Header with Gradient -->
+              <table cellpadding="0" cellspacing="0" border="0" width="100%">
+                <tr>
+                  <td style="background: linear-gradient(135deg, #2563eb 0%, #1e40af 100%); padding: 48px 40px; text-align: center;">
+                    <div style="width: 64px; height: 64px; background-color: rgba(255,255,255,0.2); border-radius: 50%; margin: 0 auto 20px; line-height: 64px; font-size: 32px;">
+                      🎫
+                    </div>
+                    <h1 style="margin: 0; color: #ffffff; font-size: 28px; font-weight: 700; letter-spacing: -0.5px;">New Ticket Assigned</h1>
+                    <p style="margin: 12px 0 0 0; color: rgba(255,255,255,0.9); font-size: 16px; font-weight: 400;">A new ticket has been assigned to you</p>
+                  </td>
+                </tr>
+              </table>
+
+              <!-- Content -->
+              <table cellpadding="0" cellspacing="0" border="0" width="100%">
+                <tr>
+                  <td style="padding: 48px 40px;">
+
+                    <p style="margin: 0 0 24px 0; color: #2d3748; font-size: 16px; line-height: 1.7; font-weight: 400;">
+                      Hello <strong style="color: #1a202c; font-weight: 600;">${assignedToName}</strong>,
+                    </p>
+
+                    <p style="margin: 0 0 32px 0; color: #4a5568; font-size: 15px; line-height: 1.7;">
+                      A new ticket has been assigned to you in the <strong style="color: #2d3748;">${projectName}</strong> project.
+                    </p>
+
+                    <!-- Ticket Details Card -->
+                    <table cellpadding="0" cellspacing="0" border="0" width="100%" style="margin: 0 0 32px 0; background-color: #f7fafc; border-radius: 8px; border: 1px solid #e2e8f0;">
+                      <tr>
+                        <td style="padding: 24px;">
+                          <p style="margin: 0 0 16px 0; color: #718096; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px;">
+                            Ticket Details
+                          </p>
+                          <table cellpadding="0" cellspacing="0" border="0" width="100%">
+                            <tr>
+                              <td style="padding: 8px 0; color: #4a5568; font-size: 14px; font-weight: 500;">Title:</td>
+                              <td style="padding: 8px 0; color: #2d3748; font-size: 14px; font-weight: 600; text-align: right;">${ticketTitle}</td>
+                            </tr>
+                            <tr>
+                              <td style="padding: 8px 0; color: #4a5568; font-size: 14px; font-weight: 500;">Project:</td>
+                              <td style="padding: 8px 0; color: #2d3748; font-size: 14px; font-weight: 600; text-align: right;">${projectName}</td>
+                            </tr>
+                            <tr>
+                              <td style="padding: 8px 0; color: #4a5568; font-size: 14px; font-weight: 500;">Raised by:</td>
+                              <td style="padding: 8px 0; color: #2d3748; font-size: 14px; font-weight: 600; text-align: right;">${raisedByName}</td>
+                            </tr>
+                          </table>
+                        </td>
+                      </tr>
+                    </table>
+
+                    <!-- Divider -->
+                    <table cellpadding="0" cellspacing="0" border="0" width="100%" style="margin: 32px 0;">
+                      <tr>
+                        <td style="height: 1px; background-color: #e2e8f0;"></td>
+                      </tr>
+                    </table>
+
+                    <!-- Support -->
+                    <p style="margin: 0 0 8px 0; color: #4a5568; font-size: 15px; line-height: 1.6;">
+                      If you have any questions about this ticket, please don't hesitate to reach out.
+                    </p>
+
+                    <p style="margin: 24px 0 0 0; color: #2d3748; font-size: 15px; line-height: 1.6;">
+                      Best regards,<br>
+                      <span style="font-weight: 600; color: #1a202c;">Ticketing System Team</span>
+                    </p>
+
+                  </td>
+                </tr>
+              </table>
+
+              <!-- Footer -->
+              <table cellpadding="0" cellspacing="0" border="0" width="100%" style="background-color: #f7fafc; border-top: 1px solid #e2e8f0;">
+                <tr>
+                  <td style="padding: 32px 40px; text-align: center;">
+                    <p style="margin: 0 0 8px 0; color: #718096; font-size: 12px; line-height: 1.5;">
+                      This is an automated message. Please do not reply to this email.
+                    </p>
+                    <p style="margin: 0; color: #a0aec0; font-size: 11px; line-height: 1.5;">
+                      © ${new Date().getFullYear()} Ticketing System. All rights reserved.
+                    </p>
+                  </td>
+                </tr>
+              </table>
+
+            </td>
+          </tr>
+
+          <!-- Spacer -->
+          <tr>
+            <td style="height: 20px;"></td>
+          </tr>
+
+        </table>
+      </body>
+      </html>
+    `;
+  }
+
+  private generateTicketCreatedEmailText(
+    assignedToName: string,
+    ticketTitle: string,
+    raisedByName: string,
+    projectName: string
+  ): string {
+    return `
+New Ticket Assigned - Ticketing System
+
+Hello ${assignedToName},
+
+A new ticket has been assigned to you in the ${projectName} project.
+
+Ticket Details:
+- Title: ${ticketTitle}
+- Project: ${projectName}
+- Raised by: ${raisedByName}
+
+If you have any questions about this ticket, please don't hesitate to reach out.
+
+Best regards,
+The Ticketing System Team
+
+---
+This is an automated message. Please do not reply to this email.
+    `.trim();
+  }
+
   async testConnection(): Promise<boolean> {
     try {
       await this.transporter.verify();
