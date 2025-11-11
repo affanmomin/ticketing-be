@@ -12,6 +12,8 @@ export interface ProjectResult {
   active: boolean;
   createdAt: Date;
   updatedAt: Date;
+  streamCount?: number;
+  subjectCount?: number;
 }
 
 export interface ProjectMemberResult {
@@ -117,15 +119,16 @@ export async function listProjects(
 }
 
 /**
- * Get a single project
+ * Get a single project with stream and subject counts
  */
 export async function getProject(
   tx: PoolClient,
   projectId: string,
-  organizationId: string
+  organizationId: string,
+  includeCount: boolean = true
 ): Promise<ProjectResult> {
   const { rows } = await tx.query(
-    `SELECT p.id, p.client_id, p.name, p.description, p.start_date, p.end_date, 
+    `SELECT p.id, p.client_id, p.name, p.description, p.start_date, p.end_date,
             p.active, p.created_at, p.updated_at
      FROM project p
      JOIN client c ON c.id = p.client_id
@@ -136,7 +139,7 @@ export async function getProject(
   if (rows.length === 0) throw notFound('Project not found');
 
   const r = rows[0];
-  return {
+  const result: ProjectResult = {
     id: r.id,
     clientId: r.client_id,
     name: r.name,
@@ -147,6 +150,20 @@ export async function getProject(
     createdAt: r.created_at,
     updatedAt: r.updated_at,
   };
+
+  // Optionally include stream and subject counts
+  if (includeCount) {
+    const { rows: countRows } = await tx.query(
+      `SELECT
+        (SELECT COUNT(*)::int FROM stream WHERE project_id = $1) as stream_count,
+        (SELECT COUNT(*)::int FROM subject WHERE project_id = $1) as subject_count`,
+      [projectId]
+    );
+    result.streamCount = countRows[0].stream_count;
+    result.subjectCount = countRows[0].subject_count;
+  }
+
+  return result;
 }
 
 /**
@@ -404,7 +421,7 @@ export async function updateProjectMember(
 
   params.push(projectId, userId);
   const { rows } = await tx.query(
-    `UPDATE project_member SET ${updateFields.join(', ')} 
+    `UPDATE project_member SET ${updateFields.join(', ')}
      WHERE project_id = $${paramIndex} AND user_id = $${paramIndex + 1}
      RETURNING project_id, user_id, role, can_raise, can_be_assigned, created_at`,
     params
@@ -447,4 +464,42 @@ export async function removeProjectMember(
   );
 
   if (rows.length === 0) throw notFound('Project member not found');
+}
+
+/**
+ * Get project taxonomy summary (streams and subjects)
+ */
+export async function getProjectTaxonomy(
+  tx: PoolClient,
+  projectId: string,
+  organizationId: string
+): Promise<{
+  streams: Array<{ id: string; name: string; active: boolean }>;
+  subjects: Array<{ id: string; name: string; active: boolean }>;
+}> {
+  // Verify project exists in organization
+  const { rows: projectRows } = await tx.query(
+    `SELECT 1 FROM project p
+     JOIN client c ON c.id = p.client_id
+     WHERE p.id = $1 AND c.organization_id = $2`,
+    [projectId, organizationId]
+  );
+  if (projectRows.length === 0) throw notFound('Project not found');
+
+  // Get streams
+  const { rows: streamRows } = await tx.query(
+    `SELECT id, name, active FROM stream WHERE project_id = $1 ORDER BY name`,
+    [projectId]
+  );
+
+  // Get subjects
+  const { rows: subjectRows } = await tx.query(
+    `SELECT id, name, active FROM subject WHERE project_id = $1 ORDER BY name`,
+    [projectId]
+  );
+
+  return {
+    streams: streamRows.map(r => ({ id: r.id, name: r.name, active: r.active })),
+    subjects: subjectRows.map(r => ({ id: r.id, name: r.name, active: r.active })),
+  };
 }

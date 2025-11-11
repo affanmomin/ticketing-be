@@ -3,7 +3,7 @@ import { badRequest, notFound, forbidden } from '../utils/errors';
 
 export interface SubjectResult {
   id: string;
-  clientId: string;
+  projectId: string;
   name: string;
   description: string | null;
   active: boolean;
@@ -13,35 +13,37 @@ export interface SubjectResult {
 
 export async function listSubjects(
   tx: PoolClient,
-  clientId: string,
+  projectId: string,
   organizationId: string,
   limit: number,
   offset: number
 ): Promise<{ data: SubjectResult[]; total: number }> {
-  const { rows: clientRows } = await tx.query(
-    'SELECT id FROM client WHERE id = $1 AND organization_id = $2',
-    [clientId, organizationId]
+  const { rows: projectRows } = await tx.query(
+    `SELECT p.id FROM project p
+     JOIN client c ON c.id = p.client_id
+     WHERE p.id = $1 AND c.organization_id = $2`,
+    [projectId, organizationId]
   );
-  if (clientRows.length === 0) throw forbidden('Client not found');
+  if (projectRows.length === 0) throw forbidden('Project not found');
 
   const { rows: countRows } = await tx.query(
-    'SELECT COUNT(*)::int as total FROM subject WHERE client_id = $1',
-    [clientId]
+    'SELECT COUNT(*)::int as total FROM subject WHERE project_id = $1',
+    [projectId]
   );
   const total = countRows[0].total;
 
   const { rows } = await tx.query(
-    `SELECT id, client_id, name, description, active, created_at, updated_at
-     FROM subject WHERE client_id = $1
+    `SELECT id, project_id, name, description, active, created_at, updated_at
+     FROM subject WHERE project_id = $1
      ORDER BY created_at DESC
      LIMIT $2 OFFSET $3`,
-    [clientId, limit, offset]
+    [projectId, limit, offset]
   );
 
   return {
     data: rows.map(r => ({
       id: r.id,
-      clientId: r.client_id,
+      projectId: r.project_id,
       name: r.name,
       description: r.description,
       active: r.active,
@@ -58,9 +60,10 @@ export async function getSubject(
   organizationId: string
 ): Promise<SubjectResult> {
   const { rows } = await tx.query(
-    `SELECT s.id, s.client_id, s.name, s.description, s.active, s.created_at, s.updated_at
+    `SELECT s.id, s.project_id, s.name, s.description, s.active, s.created_at, s.updated_at
      FROM subject s
-     JOIN client c ON c.id = s.client_id
+     JOIN project p ON p.id = s.project_id
+     JOIN client c ON c.id = p.client_id
      WHERE s.id = $1 AND c.organization_id = $2`,
     [subjectId, organizationId]
   );
@@ -68,7 +71,7 @@ export async function getSubject(
   const r = rows[0];
   return {
     id: r.id,
-    clientId: r.client_id,
+    projectId: r.project_id,
     name: r.name,
     description: r.description,
     active: r.active,
@@ -80,32 +83,34 @@ export async function getSubject(
 export async function createSubject(
   tx: PoolClient,
   organizationId: string,
-  clientId: string,
+  projectId: string,
   name: string,
   description?: string | null
 ): Promise<SubjectResult> {
-  const { rows: clientRows } = await tx.query(
-    'SELECT id FROM client WHERE id = $1 AND organization_id = $2',
-    [clientId, organizationId]
+  const { rows: projectRows } = await tx.query(
+    `SELECT p.id FROM project p
+     JOIN client c ON c.id = p.client_id
+     WHERE p.id = $1 AND c.organization_id = $2`,
+    [projectId, organizationId]
   );
-  if (clientRows.length === 0) throw forbidden('Client not found');
+  if (projectRows.length === 0) throw forbidden('Project not found');
 
   const { rows: existing } = await tx.query(
-    'SELECT id FROM subject WHERE client_id = $1 AND name = $2',
-    [clientId, name]
+    'SELECT id FROM subject WHERE project_id = $1 AND name = $2',
+    [projectId, name]
   );
   if (existing.length > 0) throw badRequest('Subject with this name already exists');
 
   const { rows } = await tx.query(
-    `INSERT INTO subject (client_id, name, description, active)
+    `INSERT INTO subject (project_id, name, description, active)
      VALUES ($1, $2, $3, true)
-     RETURNING id, client_id, name, description, active, created_at, updated_at`,
-    [clientId, name, description || null]
+     RETURNING id, project_id, name, description, active, created_at, updated_at`,
+    [projectId, name, description || null]
   );
   const r = rows[0];
   return {
     id: r.id,
-    clientId: r.client_id,
+    projectId: r.project_id,
     name: r.name,
     description: r.description,
     active: r.active,
@@ -122,7 +127,8 @@ export async function updateSubject(
 ): Promise<SubjectResult> {
   const { rows: existing } = await tx.query(
     `SELECT s.id FROM subject s
-     JOIN client c ON c.id = s.client_id
+     JOIN project p ON p.id = s.project_id
+     JOIN client c ON c.id = p.client_id
      WHERE s.id = $1 AND c.organization_id = $2`,
     [subjectId, organizationId]
   );
@@ -155,13 +161,13 @@ export async function updateSubject(
   params.push(subjectId);
   const { rows } = await tx.query(
     `UPDATE subject SET ${updateFields.join(', ')} WHERE id = $${paramIndex}
-     RETURNING id, client_id, name, description, active, created_at, updated_at`,
+     RETURNING id, project_id, name, description, active, created_at, updated_at`,
     params
   );
   const r = rows[0];
   return {
     id: r.id,
-    clientId: r.client_id,
+    projectId: r.project_id,
     name: r.name,
     description: r.description,
     active: r.active,

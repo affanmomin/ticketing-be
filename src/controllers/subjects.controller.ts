@@ -9,7 +9,7 @@ export async function listSubjectsCtrl(req: FastifyRequest, reply: FastifyReply)
   if (!req.user) throw unauthorized('Authentication required');
   if (req.user.role !== 'ADMIN') throw forbidden('Only admins can list subjects');
 
-  const { id: clientId } = IdParam.parse(req.params);
+  const { id: projectId } = IdParam.parse(req.params);
   const query = ListSubjectsQuery.parse(req.query);
 
   const client = await pool.connect();
@@ -18,7 +18,7 @@ export async function listSubjectsCtrl(req: FastifyRequest, reply: FastifyReply)
 
     const result = await listSubjects(
       client,
-      clientId,
+      projectId,
       req.user.organizationId,
       query.limit,
       query.offset
@@ -60,7 +60,7 @@ export async function createSubjectCtrl(req: FastifyRequest, reply: FastifyReply
   if (!req.user) throw unauthorized('Authentication required');
   if (req.user.role !== 'ADMIN') throw forbidden('Only admins can create subjects');
 
-  const { id: clientId } = IdParam.parse(req.params);
+  const { id: projectId } = IdParam.parse(req.params);
   const body = CreateSubjectBody.parse(req.body);
 
   const client = await pool.connect();
@@ -70,7 +70,7 @@ export async function createSubjectCtrl(req: FastifyRequest, reply: FastifyReply
     const result = await createSubject(
       client,
       req.user.organizationId,
-      clientId,
+      projectId,
       body.name,
       body.description ?? null
     );

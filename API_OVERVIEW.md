@@ -13,10 +13,10 @@ This document summarizes the core workflow, data model, and HTTP endpoints for t
    - Create clients (`POST /clients`).
    - Add internal employees (`POST /employees`).
    - Add client users (`POST /client-users`).
-   - Define streams and subjects per client (`POST /clients/{id}/streams`, `POST /clients/{id}/subjects`).
 3. **Project setup**
    - Create projects under a client (`POST /projects`).
    - Add project members with role flags (`POST /projects/{id}/members`).
+   - Define streams and subjects per project (`POST /projects/{id}/streams`, `POST /projects/{id}/subjects`).
 4. **Ticket lifecycle**
    - Authorized users (admin/employee/client with `canRaise`) create tickets (`POST /tickets`).
    - Status/Priority updates, assignment workflows, and audit events occur via `PATCH /tickets/{id}`.
@@ -66,10 +66,10 @@ Key auth endpoints:
 - `GET /clients` / `POST /clients` / `PATCH /clients/{id}`.
 - Records scoped per organization; deleting cascades to projects/tickets.
 
-### Streams & Subjects (per client)
-- `GET /clients/{id}/streams`, `POST /clients/{id}/streams`, `PATCH /streams/{id}`.
-- `GET /clients/{id}/subjects`, `POST /clients/{id}/subjects`, `PATCH /subjects/{id}`.
-- Used to categorize tickets.
+### Streams & Subjects (per project)
+- `GET /projects/{id}/streams`, `POST /projects/{id}/streams`, `PATCH /streams/{id}`.
+- `GET /projects/{id}/subjects`, `POST /projects/{id}/subjects`, `PATCH /subjects/{id}`.
+- Used to categorize tickets within a project.
 
 ### Projects & Membership
 - `GET /projects` – role-aware listing (admin = org, employee = memberships, client = client projects).
@@ -124,9 +124,9 @@ Key auth endpoints:
 2. **Create Client**: `POST /clients`.
 3. **Create Employee**: `POST /employees`.
 4. **Create Client User**: `POST /client-users`.
-5. **Define Taxonomy**: `POST /clients/{clientId}/streams`, `POST /clients/{clientId}/subjects`.
-6. **Create Project**: `POST /projects`.
-7. **Add Project Members**: `POST /projects/{projectId}/members` (admin & employee).
+5. **Create Project**: `POST /projects`.
+6. **Add Project Members**: `POST /projects/{projectId}/members` (admin & employee).
+7. **Define Taxonomy**: `POST /projects/{projectId}/streams`, `POST /projects/{projectId}/subjects`.
 8. **Create Ticket**: `POST /tickets` assigned to employee.
 9. **Update Ticket**: `PATCH /tickets/{ticketId}` (status/priority/assignee).
 10. **Comments**: admin adds INTERNAL, client adds PUBLIC.

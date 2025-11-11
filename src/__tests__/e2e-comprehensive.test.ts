@@ -144,57 +144,7 @@ test('E2E: Complete workflow - Auth, Users, Clients, Projects, Tickets, Comments
   assert.equal(getUserRes.status, 200);
   assert.equal(getUserRes.body.id, employeeId);
 
-  // 12. Create stream
-  const streamRes = await request
-    .post(`/clients/${clientId}/streams`)
-    .set('Authorization', `Bearer ${adminToken}`)
-    .send({
-      name: `E2E Stream ${unique}`,
-      description: 'E2E test stream',
-    });
-  assert.equal(streamRes.status, 201, `Create stream failed: ${streamRes.text}`);
-  const streamId = streamRes.body.id;
-
-  // 13. List streams
-  const listStreamsRes = await request
-    .get(`/clients/${clientId}/streams`)
-    .set('Authorization', `Bearer ${adminToken}`);
-  assert.equal(listStreamsRes.status, 200);
-  assert.ok(listStreamsRes.body.total >= 1);
-
-  // 14. Get stream
-  const getStreamRes = await request
-    .get(`/streams/${streamId}`)
-    .set('Authorization', `Bearer ${adminToken}`);
-  assert.equal(getStreamRes.status, 200);
-  assert.equal(getStreamRes.body.id, streamId);
-
-  // 15. Create subject
-  const subjectRes = await request
-    .post(`/clients/${clientId}/subjects`)
-    .set('Authorization', `Bearer ${adminToken}`)
-    .send({
-      name: `E2E Subject ${unique}`,
-      description: 'E2E test subject',
-    });
-  assert.equal(subjectRes.status, 201, `Create subject failed: ${subjectRes.text}`);
-  const subjectId = subjectRes.body.id;
-
-  // 16. List subjects
-  const listSubjectsRes = await request
-    .get(`/clients/${clientId}/subjects`)
-    .set('Authorization', `Bearer ${adminToken}`);
-  assert.equal(listSubjectsRes.status, 200);
-  assert.ok(listSubjectsRes.body.total >= 1);
-
-  // 17. Get subject
-  const getSubjectRes = await request
-    .get(`/subjects/${subjectId}`)
-    .set('Authorization', `Bearer ${adminToken}`);
-  assert.equal(getSubjectRes.status, 200);
-  assert.equal(getSubjectRes.body.id, subjectId);
-
-  // 18. Get taxonomy (priority, status)
+  // 12. Get taxonomy (priority, status)
   const priorityRes = await request
     .get('/taxonomy/priority')
     .set('Authorization', `Bearer ${adminToken}`);
@@ -209,7 +159,7 @@ test('E2E: Complete workflow - Auth, Users, Clients, Projects, Tickets, Comments
   assert.ok(statusRes.body.length > 0);
   const statusId = statusRes.body.find((s: any) => !s.isClosed)?.id ?? statusRes.body[0].id;
 
-  // 19. Create project
+  // 13. Create project
   const projectRes = await request
     .post('/projects')
     .set('Authorization', `Bearer ${adminToken}`)
@@ -220,6 +170,56 @@ test('E2E: Complete workflow - Auth, Users, Clients, Projects, Tickets, Comments
     });
   assert.equal(projectRes.status, 201, `Create project failed: ${projectRes.text}`);
   const projectId = projectRes.body.id;
+
+  // 14. Create stream (now under project)
+  const streamRes = await request
+    .post(`/projects/${projectId}/streams`)
+    .set('Authorization', `Bearer ${adminToken}`)
+    .send({
+      name: `E2E Stream ${unique}`,
+      description: 'E2E test stream',
+    });
+  assert.equal(streamRes.status, 201, `Create stream failed: ${streamRes.text}`);
+  const streamId = streamRes.body.id;
+
+  // 15. List streams
+  const listStreamsRes = await request
+    .get(`/projects/${projectId}/streams`)
+    .set('Authorization', `Bearer ${adminToken}`);
+  assert.equal(listStreamsRes.status, 200);
+  assert.ok(listStreamsRes.body.total >= 1);
+
+  // 16. Get stream
+  const getStreamRes = await request
+    .get(`/streams/${streamId}`)
+    .set('Authorization', `Bearer ${adminToken}`);
+  assert.equal(getStreamRes.status, 200);
+  assert.equal(getStreamRes.body.id, streamId);
+
+  // 17. Create subject (now under project)
+  const subjectRes = await request
+    .post(`/projects/${projectId}/subjects`)
+    .set('Authorization', `Bearer ${adminToken}`)
+    .send({
+      name: `E2E Subject ${unique}`,
+      description: 'E2E test subject',
+    });
+  assert.equal(subjectRes.status, 201, `Create subject failed: ${subjectRes.text}`);
+  const subjectId = subjectRes.body.id;
+
+  // 18. List subjects
+  const listSubjectsRes = await request
+    .get(`/projects/${projectId}/subjects`)
+    .set('Authorization', `Bearer ${adminToken}`);
+  assert.equal(listSubjectsRes.status, 200);
+  assert.ok(listSubjectsRes.body.total >= 1);
+
+  // 19. Get subject
+  const getSubjectRes = await request
+    .get(`/subjects/${subjectId}`)
+    .set('Authorization', `Bearer ${adminToken}`);
+  assert.equal(getSubjectRes.status, 200);
+  assert.equal(getSubjectRes.body.id, subjectId);
 
   // 20. List projects
   const listProjectsRes = await request

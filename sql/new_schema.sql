@@ -19,6 +19,9 @@ CREATE TABLE organization (
   created_at  timestamptz NOT NULL DEFAULT now(),
   updated_at  timestamptz NOT NULL DEFAULT now()
 );
+CREATE TRIGGER trg_organization_updated_at
+BEFORE UPDATE ON organization
+FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
 CREATE TABLE client (
   id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -39,16 +42,16 @@ FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
 -- System users (admins + client users)
 CREATE TABLE app_user (
-  id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   organization_id uuid NOT NULL REFERENCES organization(id) ON DELETE CASCADE,
-  client_id     uuid NULL REFERENCES client(id) ON DELETE SET NULL,  -- NULL => internal/admin-side
-  user_type     text NOT NULL CHECK (user_type IN ('ADMIN','EMPLOYEE','CLIENT')),
-  email         citext NOT NULL UNIQUE,
-  full_name     text NOT NULL,
-  password_hash text NOT NULL,
-  is_active     boolean NOT NULL DEFAULT true,
-  created_at    timestamptz NOT NULL DEFAULT now(),
-  updated_at    timestamptz NOT NULL DEFAULT now()
+  client_id       uuid NULL REFERENCES client(id) ON DELETE SET NULL,  -- NULL => internal/admin-side
+  user_type       text NOT NULL CHECK (user_type IN ('ADMIN','EMPLOYEE','CLIENT')),
+  email           citext NOT NULL UNIQUE,
+  full_name       text NOT NULL,
+  password_hash   text NOT NULL,
+  is_active       boolean NOT NULL DEFAULT true,
+  created_at      timestamptz NOT NULL DEFAULT now(),
+  updated_at      timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX ix_app_user_org    ON app_user(organization_id);
 CREATE INDEX ix_app_user_client ON app_user(client_id);
@@ -87,44 +90,49 @@ CREATE TABLE project_member (
 );
 CREATE INDEX ix_project_member_user ON project_member(user_id);
 
--- ========= Taxonomies =========
--- Client-customizable
+-- ========= Taxonomies (Project-scoped) =========
+
 CREATE TABLE stream (
   id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  client_id   uuid NOT NULL REFERENCES client(id) ON DELETE CASCADE,
+  project_id  uuid NOT NULL REFERENCES project(id) ON DELETE CASCADE,
   name        text NOT NULL,
   description text,
   active      boolean NOT NULL DEFAULT true,
   created_at  timestamptz NOT NULL DEFAULT now(),
   updated_at  timestamptz NOT NULL DEFAULT now(),
-  CONSTRAINT uq_stream_client_name UNIQUE (client_id, name)
+  CONSTRAINT uq_stream_project_name UNIQUE (project_id, name)
 );
-CREATE INDEX ix_stream_client ON stream(client_id);
+-- Target for composite FK from ticket
+CREATE UNIQUE INDEX ux_stream_id_project ON stream(id, project_id);
+CREATE INDEX ix_stream_project ON stream(project_id);
 CREATE TRIGGER trg_stream_updated_at
 BEFORE UPDATE ON stream
 FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
 CREATE TABLE subject (
   id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  client_id   uuid NOT NULL REFERENCES client(id) ON DELETE CASCADE,
+  project_id  uuid NOT NULL REFERENCES project(id) ON DELETE CASCADE,
   name        text NOT NULL,
   description text,
   active      boolean NOT NULL DEFAULT true,
   created_at  timestamptz NOT NULL DEFAULT now(),
   updated_at  timestamptz NOT NULL DEFAULT now(),
-  CONSTRAINT uq_subject_client_name UNIQUE (client_id, name)
+  CONSTRAINT uq_subject_project_name UNIQUE (project_id, name)
 );
-CREATE INDEX ix_subject_client ON subject(client_id);
+-- Target for composite FK from ticket
+CREATE UNIQUE INDEX ux_subject_id_project ON subject(id, project_id);
+CREATE INDEX ix_subject_project ON subject(project_id);
 CREATE TRIGGER trg_subject_updated_at
 BEFORE UPDATE ON subject
 FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
--- Global (system-wide) LOOKUPS
+-- ========= Global (system-wide) LOOKUPS =========
+
 CREATE TABLE priority (
   id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   name        text NOT NULL UNIQUE,        -- Low/Medium/High/Urgent
   rank        int  NOT NULL CHECK (rank BETWEEN 1 AND 100),
-  color_hex   text,                        -- optional UI
+  color_hex   text,
   active      boolean NOT NULL DEFAULT true,
   created_at  timestamptz NOT NULL DEFAULT now(),
   updated_at  timestamptz NOT NULL DEFAULT now()
@@ -153,22 +161,29 @@ CREATE TABLE ticket (
   project_id           uuid NOT NULL REFERENCES project(id) ON DELETE CASCADE,
   raised_by_user_id    uuid NOT NULL REFERENCES app_user(id) ON DELETE RESTRICT,
   assigned_to_user_id  uuid NULL REFERENCES app_user(id) ON DELETE SET NULL,
-  stream_id            uuid NOT NULL REFERENCES stream(id) ON DELETE RESTRICT,
-  subject_id           uuid NOT NULL REFERENCES subject(id) ON DELETE RESTRICT,
-  priority_id          uuid NOT NULL REFERENCES priority(id) ON DELETE RESTRICT, -- global
-  status_id            uuid NOT NULL REFERENCES status(id)   ON DELETE RESTRICT, -- global
+  -- Project-scoped taxonomy FKs with composite integrity
+  stream_id            uuid NOT NULL,
+  subject_id           uuid NOT NULL,
+  priority_id          uuid NOT NULL REFERENCES priority(id) ON DELETE RESTRICT,
+  status_id            uuid NOT NULL REFERENCES status(id)   ON DELETE RESTRICT,
   title                text NOT NULL,
   description_md       text,
   is_deleted           boolean NOT NULL DEFAULT false,
   created_at           timestamptz NOT NULL DEFAULT now(),
   updated_at           timestamptz NOT NULL DEFAULT now(),
-  closed_at            timestamptz
+  closed_at            timestamptz,
+  CONSTRAINT fk_ticket_stream_project
+    FOREIGN KEY (project_id, stream_id)  REFERENCES stream(project_id, id)  ON DELETE RESTRICT,
+  CONSTRAINT fk_ticket_subject_project
+    FOREIGN KEY (project_id, subject_id) REFERENCES subject(project_id, id) ON DELETE RESTRICT
 );
 CREATE INDEX ix_ticket_project   ON ticket(project_id);
 CREATE INDEX ix_ticket_assignee  ON ticket(assigned_to_user_id) WHERE assigned_to_user_id IS NOT NULL;
 CREATE INDEX ix_ticket_status    ON ticket(status_id);
 CREATE INDEX ix_ticket_priority  ON ticket(priority_id);
 CREATE INDEX ix_ticket_created   ON ticket(created_at);
+CREATE INDEX ix_ticket_stream    ON ticket(stream_id);
+CREATE INDEX ix_ticket_subject   ON ticket(subject_id);
 CREATE TRIGGER trg_ticket_updated_at
 BEFORE UPDATE ON ticket
 FOR EACH ROW EXECUTE FUNCTION set_updated_at();
@@ -217,7 +232,7 @@ CREATE INDEX ix_event_ticket ON ticket_event(ticket_id);
 CREATE INDEX ix_event_actor  ON ticket_event(actor_id);
 CREATE INDEX ix_event_type   ON ticket_event(event_type);
 
--- ========= Notification Outbox (for Power Automate / mailers) =========
+-- ========= Notification Outbox (for mailers / automations) =========
 CREATE TABLE notification_outbox (
   id                uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   topic             text NOT NULL CHECK (topic IN (
@@ -237,32 +252,34 @@ CREATE INDEX ix_outbox_pending   ON notification_outbox(delivered_at) WHERE deli
 
 -- ========= Views (handy for APIs) =========
 
+-- Client-visible ticket rows (adds client_id; filters soft-deleted)
 CREATE OR REPLACE VIEW v_ticket_client_visible AS
 SELECT t.*, p.client_id
 FROM ticket t
 JOIN project p ON p.id = t.project_id
 WHERE t.is_deleted = false;
 
+-- Search-friendly view with resolved names
 CREATE OR REPLACE VIEW v_ticket_search AS
 SELECT
   t.id,
   t.title,
   t.created_at,
   t.updated_at,
-  p.name  AS project_name,
-  c.name  AS client_name,
-  s.name  AS status_name,
-  pr.name AS priority_name,
-  st.name AS stream_name,
+  p.name   AS project_name,
+  c.name   AS client_name,
+  s2.name  AS status_name,
+  pr.name  AS priority_name,
+  st.name  AS stream_name,
   sbj.name AS subject_name,
   t.assigned_to_user_id
 FROM ticket t
 JOIN project  p   ON p.id  = t.project_id
 JOIN client   c   ON c.id  = p.client_id
-JOIN status   s   ON s.id  = t.status_id
+JOIN status   s2  ON s2.id = t.status_id
 JOIN priority pr  ON pr.id = t.priority_id
-JOIN stream   st  ON st.id = t.stream_id
-JOIN subject  sbj ON sbj.id= t.subject_id
+JOIN stream   st  ON st.id = t.stream_id  AND st.project_id  = t.project_id
+JOIN subject  sbj ON sbj.id = t.subject_id AND sbj.project_id = t.project_id
 WHERE t.is_deleted = false;
 
 -- ========= Global Seed (status/priority) =========

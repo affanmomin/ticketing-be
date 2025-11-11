@@ -6,13 +6,13 @@ import { IdParam } from '../schemas/common.schema';
 import { forbidden, unauthorized } from '../utils/errors';
 
 /**
- * GET /clients/:id/streams - List streams for a client (ADMIN only)
+ * GET /projects/:id/streams - List streams for a project (ADMIN only)
  */
 export async function listStreamsCtrl(req: FastifyRequest, reply: FastifyReply) {
   if (!req.user) throw unauthorized('Authentication required');
   if (req.user.role !== 'ADMIN') throw forbidden('Only admins can list streams');
 
-  const { id: clientId } = IdParam.parse(req.params);
+  const { id: projectId } = IdParam.parse(req.params);
   const query = ListStreamsQuery.parse(req.query);
 
   const client = await pool.connect();
@@ -21,7 +21,7 @@ export async function listStreamsCtrl(req: FastifyRequest, reply: FastifyReply) 
 
     const result = await listStreams(
       client,
-      clientId,
+      projectId,
       req.user.organizationId,
       query.limit,
       query.offset
@@ -63,13 +63,13 @@ export async function getStreamCtrl(req: FastifyRequest, reply: FastifyReply) {
 }
 
 /**
- * POST /clients/:id/streams - Create stream (ADMIN only)
+ * POST /projects/:id/streams - Create stream (ADMIN only)
  */
 export async function createStreamCtrl(req: FastifyRequest, reply: FastifyReply) {
   if (!req.user) throw unauthorized('Authentication required');
   if (req.user.role !== 'ADMIN') throw forbidden('Only admins can create streams');
 
-  const { id: clientId } = IdParam.parse(req.params);
+  const { id: projectId } = IdParam.parse(req.params);
   const body = CreateStreamBody.parse(req.body);
 
   const client = await pool.connect();
@@ -79,7 +79,7 @@ export async function createStreamCtrl(req: FastifyRequest, reply: FastifyReply)
     const result = await createStream(
       client,
       req.user.organizationId,
-      clientId,
+      projectId,
       body.name,
       body.description ?? null
     );

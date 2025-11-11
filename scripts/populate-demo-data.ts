@@ -143,43 +143,8 @@ async function main() {
 
     console.log(`   ✓ Found ${priorities.length} priorities and ${statuses.length} statuses`);
 
-    // 6. Create Streams and Subjects for each client
-    console.log('\n6. Creating streams and subjects...');
-    const streamIds: string[] = [];
-    const subjectIds: string[] = [];
-
-    for (let i = 0; i < clientIds.length; i++) {
-      const clientId = clientIds[i];
-      const clientName = clients[i].name;
-
-      // Create streams
-      const streams = ['Support', 'Development', 'Billing'];
-      for (const streamName of streams) {
-        const { rows } = await client.query(
-          `INSERT INTO stream (client_id, name, description, active)
-           VALUES ($1, $2, $3, true)
-           RETURNING id`,
-          [clientId, `${streamName} - ${clientName}`, `Stream for ${streamName} issues`]
-        );
-        streamIds.push(rows[0].id);
-      }
-
-      // Create subjects
-      const subjects = ['Bug Report', 'Feature Request', 'Question'];
-      for (const subjectName of subjects) {
-        const { rows } = await client.query(
-          `INSERT INTO subject (client_id, name, description, active)
-           VALUES ($1, $2, $3, true)
-           RETURNING id`,
-          [clientId, `${subjectName} - ${clientName}`, `Subject for ${subjectName}`]
-        );
-        subjectIds.push(rows[0].id);
-      }
-    }
-    console.log(`   ✓ Created ${streamIds.length} streams and ${subjectIds.length} subjects`);
-
-    // 7. Create Projects
-    console.log('\n7. Creating projects...');
+    // 6. Create Projects
+    console.log('\n6. Creating projects...');
     const projectIds: string[] = [];
     const projects = [
       { name: 'Website Redesign', clientId: clientIds[0] },
@@ -200,6 +165,41 @@ async function main() {
       projectIds.push(rows[0].id);
       console.log(`   ✓ Project created: ${proj.name}`);
     }
+
+    // 7. Create Streams and Subjects for each project
+    console.log('\n7. Creating streams and subjects...');
+    const streamIds: string[] = [];
+    const subjectIds: string[] = [];
+
+    for (let i = 0; i < projectIds.length; i++) {
+      const projectId = projectIds[i];
+      const projectName = projects[i].name;
+
+      // Create streams
+      const streams = ['Support', 'Development', 'Billing'];
+      for (const streamName of streams) {
+        const { rows } = await client.query(
+          `INSERT INTO stream (project_id, name, description, active)
+           VALUES ($1, $2, $3, true)
+           RETURNING id`,
+          [projectId, `${streamName}`, `Stream for ${streamName} issues in ${projectName}`]
+        );
+        streamIds.push(rows[0].id);
+      }
+
+      // Create subjects
+      const subjects = ['Bug Report', 'Feature Request', 'Question'];
+      for (const subjectName of subjects) {
+        const { rows } = await client.query(
+          `INSERT INTO subject (project_id, name, description, active)
+           VALUES ($1, $2, $3, true)
+           RETURNING id`,
+          [projectId, `${subjectName}`, `Subject for ${subjectName} in ${projectName}`]
+        );
+        subjectIds.push(rows[0].id);
+      }
+    }
+    console.log(`   ✓ Created ${streamIds.length} streams and ${subjectIds.length} subjects`);
 
     // 8. Add Project Members
     console.log('\n8. Adding project members...');
@@ -261,18 +261,16 @@ async function main() {
       const projectId = projectIds[i];
       const project = projects[i];
 
-      // Get streams and subjects for this client
-      // Find which client this project belongs to
-      const clientIndex = clientIds.findIndex(cid => cid === project.clientId);
-      const clientStreams = streamIds.slice(clientIndex * 3, (clientIndex + 1) * 3);
-      const clientSubjects = subjectIds.slice(clientIndex * 3, (clientIndex + 1) * 3);
+      // Get streams and subjects for this project
+      const projectStreams = streamIds.slice(i * 3, (i + 1) * 3);
+      const projectSubjects = subjectIds.slice(i * 3, (i + 1) * 3);
 
       // Create 2-3 tickets per project
       const ticketsPerProject = i < 2 ? 3 : 2;
       for (let j = 0; j < ticketsPerProject && ticketIndex < ticketTitles.length; j++) {
         const title = ticketTitles[ticketIndex];
-        const streamId = clientStreams[j % clientStreams.length];
-        const subjectId = clientSubjects[j % clientSubjects.length];
+        const streamId = projectStreams[j % projectStreams.length];
+        const subjectId = projectSubjects[j % projectSubjects.length];
         const priorityId = priorities[ticketIndex % priorities.length].id;
         const statusId = statuses[ticketIndex % statuses.length].id;
 

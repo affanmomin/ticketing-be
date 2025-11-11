@@ -85,6 +85,8 @@ components:
         active: { type: boolean }
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
+        streamCount: { type: integer, description: "Number of streams in project" }
+        subjectCount: { type: integer, description: "Number of subjects in project" }
     ProjectMember:
       type: object
       properties:
@@ -98,7 +100,7 @@ components:
       type: object
       properties:
         id: { type: string, format: uuid }
-        clientId: { type: string, format: uuid }
+        projectId: { type: string, format: uuid }
         name: { type: string }
         description: { type: string, nullable: true }
         active: { type: boolean }
@@ -108,7 +110,7 @@ components:
       type: object
       properties:
         id: { type: string, format: uuid }
-        clientId: { type: string, format: uuid }
+        projectId: { type: string, format: uuid }
         name: { type: string }
         description: { type: string, nullable: true }
         active: { type: boolean }
@@ -533,6 +535,40 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Project' }
+  /projects/{id}/taxonomy:
+    get:
+      tags: [Projects]
+      security: [{ bearerAuth: [] }]
+      summary: Get project taxonomy (streams and subjects)
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Project taxonomy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  streams:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: string, format: uuid }
+                        name: { type: string }
+                        active: { type: boolean }
+                  subjects:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: string, format: uuid }
+                        name: { type: string }
+                        active: { type: boolean }
   /projects/{id}/members:
     get:
       tags: [Projects]
@@ -623,11 +659,11 @@ paths:
           schema: { type: string, format: uuid }
       responses:
         '204': { description: Member removed }
-  /clients/{id}/streams:
+  /projects/{id}/streams:
     get:
       tags: [Streams]
       security: [{ bearerAuth: [] }]
-      summary: List client streams (ADMIN only)
+      summary: List project streams (ADMIN only)
       parameters:
         - in: path
           name: id
@@ -711,11 +747,11 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Stream' }
-  /clients/{id}/subjects:
+  /projects/{id}/subjects:
     get:
       tags: [Subjects]
       security: [{ bearerAuth: [] }]
-      summary: List client subjects (ADMIN only)
+      summary: List project subjects (ADMIN only)
       parameters:
         - in: path
           name: id
@@ -759,6 +795,21 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Subject' }
   /subjects/{id}:
+    get:
+      tags: [Subjects]
+      security: [{ bearerAuth: [] }]
+      summary: Get subject
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Subject
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Subject' }
     patch:
       tags: [Subjects]
       security: [{ bearerAuth: [] }]

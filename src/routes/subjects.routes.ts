@@ -9,8 +9,8 @@ import { ListSubjectsQuery, CreateSubjectBody, UpdateSubjectBody } from '../sche
 import { IdParam } from '../schemas/common.schema';
 
 export default async function subjectsRoutes(app: FastifyInstance) {
-  app.get('/clients/:id/subjects', { schema: { params: IdParam, querystring: ListSubjectsQuery } }, listSubjectsCtrl);
+  app.get('/projects/:id/subjects', { schema: { params: IdParam, querystring: ListSubjectsQuery } }, listSubjectsCtrl);
   app.get('/subjects/:id', { schema: { params: IdParam } }, getSubjectCtrl);
-  app.post('/clients/:id/subjects', { schema: { params: IdParam, body: CreateSubjectBody } }, createSubjectCtrl);
+  app.post('/projects/:id/subjects', { schema: { params: IdParam, body: CreateSubjectBody } }, createSubjectCtrl);
   app.post('/subjects/:id', { schema: { params: IdParam, body: UpdateSubjectBody } }, updateSubjectCtrl);
 }

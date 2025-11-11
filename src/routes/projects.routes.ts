@@ -8,6 +8,7 @@ import {
   addProjectMemberCtrl,
   updateProjectMemberCtrl,
   removeProjectMemberCtrl,
+  getProjectTaxonomyCtrl,
 } from '../controllers/projects.controller';
 import {
   ListProjectsQuery,
@@ -25,6 +26,7 @@ export default async function projectsRoutes(app: FastifyInstance) {
   app.post('/projects', { schema: { body: CreateProjectBody } }, createProjectCtrl);
   app.post('/projects/:id', { schema: { params: IdParam, body: UpdateProjectBody } }, updateProjectCtrl);
 
+  app.get('/projects/:id/taxonomy', { schema: { params: IdParam } }, getProjectTaxonomyCtrl);
   app.get('/projects/:id/members', { schema: { params: IdParam } }, getProjectMembersCtrl);
   app.post('/projects/:id/members', { schema: { params: IdParam, body: AddProjectMemberBody } }, addProjectMemberCtrl);
   app.post('/projects/:projectId/members/:userId', { schema: { params: ProjectMemberParams, body: UpdateProjectMemberBody } }, updateProjectMemberCtrl);

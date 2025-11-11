@@ -9,6 +9,7 @@ import {
   addProjectMember,
   updateProjectMember,
   removeProjectMember,
+  getProjectTaxonomy,
 } from '../services/projects.service';
 import {
   ListProjectsQuery,
@@ -205,4 +206,20 @@ export async function removeProjectMemberCtrl(req: FastifyRequest, reply: Fastif
   });
 
   return reply.status(204).send();
+}
+
+/**
+ * GET /projects/:id/taxonomy - Get project streams and subjects summary
+ * Read-only operation - no transaction needed
+ */
+export async function getProjectTaxonomyCtrl(req: FastifyRequest, reply: FastifyReply) {
+  if (!req.user) throw unauthorized('Authentication required');
+
+  const { id: projectId } = IdParam.parse(req.params);
+
+  const result = await withReadOnly(async (client) => {
+    return await getProjectTaxonomy(client, projectId, req.user!.organizationId);
+  });
+
+  return reply.send(result);
 }

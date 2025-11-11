@@ -91,27 +91,6 @@ test('end-to-end workflow', async () => {
     });
   assert.equal(clientUserRes.status, 201);
 
-  // Create stream & subject
-  const streamRes = await request
-    .post(`/clients/${clientId}/streams`)
-    .set('Authorization', `Bearer ${adminToken}`)
-    .send({
-      name: `Stream ${unique}`,
-      description: 'Main stream',
-    });
-  assert.equal(streamRes.status, 201);
-  const streamId = streamRes.body.id;
-
-  const subjectRes = await request
-    .post(`/clients/${clientId}/subjects`)
-    .set('Authorization', `Bearer ${adminToken}`)
-    .send({
-      name: `Subject ${unique}`,
-      description: 'Main subject',
-    });
-  assert.equal(subjectRes.status, 201);
-  const subjectId = subjectRes.body.id;
-
   // Fetch taxonomy
   const priorityRes = await request
     .get('/taxonomy/priority')
@@ -136,6 +115,27 @@ test('end-to-end workflow', async () => {
     });
   assert.equal(projectRes.status, 201);
   const projectId = projectRes.body.id;
+
+  // Create stream & subject (now under project)
+  const streamRes = await request
+    .post(`/projects/${projectId}/streams`)
+    .set('Authorization', `Bearer ${adminToken}`)
+    .send({
+      name: `Stream ${unique}`,
+      description: 'Main stream',
+    });
+  assert.equal(streamRes.status, 201);
+  const streamId = streamRes.body.id;
+
+  const subjectRes = await request
+    .post(`/projects/${projectId}/subjects`)
+    .set('Authorization', `Bearer ${adminToken}`)
+    .send({
+      name: `Subject ${unique}`,
+      description: 'Main subject',
+    });
+  assert.equal(subjectRes.status, 201);
+  const subjectId = subjectRes.body.id;
 
   // Add admin as project manager
   const adminMemberRes = await request

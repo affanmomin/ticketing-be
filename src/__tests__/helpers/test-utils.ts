@@ -218,17 +218,17 @@ export async function getTaxonomyItem(
  */
 export async function createTestStream(
   tx: PoolClient,
-  clientId: string,
+  projectId: string,
   name?: string
 ): Promise<{ id: string; name: string }> {
   const unique = Date.now() + Math.random();
   const streamName = name || `Test Stream ${unique}`;
 
   const { rows } = await tx.query(
-    `INSERT INTO stream (client_id, name, description, active)
+    `INSERT INTO stream (project_id, name, description, active)
      VALUES ($1, $2, $3, true)
      RETURNING id, name`,
-    [clientId, streamName, 'Test stream description']
+    [projectId, streamName, 'Test stream description']
   );
 
   return { id: rows[0].id, name: rows[0].name };
@@ -239,17 +239,17 @@ export async function createTestStream(
  */
 export async function createTestSubject(
   tx: PoolClient,
-  clientId: string,
+  projectId: string,
   name?: string
 ): Promise<{ id: string; name: string }> {
   const unique = Date.now() + Math.random();
   const subjectName = name || `Test Subject ${unique}`;
 
   const { rows } = await tx.query(
-    `INSERT INTO subject (client_id, name, description, active)
+    `INSERT INTO subject (project_id, name, description, active)
      VALUES ($1, $2, $3, true)
      RETURNING id, name`,
-    [clientId, subjectName, 'Test subject description']
+    [projectId, subjectName, 'Test subject description']
   );
 
   return { id: rows[0].id, name: rows[0].name };
@@ -261,10 +261,10 @@ export async function createTestSubject(
 export async function cleanupTestData(tx: PoolClient, organizationId: string): Promise<void> {
   // Delete in reverse order of dependencies
   await tx.query('DELETE FROM ticket WHERE project_id IN (SELECT id FROM project WHERE client_id IN (SELECT id FROM client WHERE organization_id = $1))', [organizationId]);
+  await tx.query('DELETE FROM stream WHERE project_id IN (SELECT id FROM project WHERE client_id IN (SELECT id FROM client WHERE organization_id = $1))', [organizationId]);
+  await tx.query('DELETE FROM subject WHERE project_id IN (SELECT id FROM project WHERE client_id IN (SELECT id FROM client WHERE organization_id = $1))', [organizationId]);
   await tx.query('DELETE FROM project_member WHERE project_id IN (SELECT id FROM project WHERE client_id IN (SELECT id FROM client WHERE organization_id = $1))', [organizationId]);
   await tx.query('DELETE FROM project WHERE client_id IN (SELECT id FROM client WHERE organization_id = $1)', [organizationId]);
-  await tx.query('DELETE FROM stream WHERE client_id IN (SELECT id FROM client WHERE organization_id = $1)', [organizationId]);
-  await tx.query('DELETE FROM subject WHERE client_id IN (SELECT id FROM client WHERE organization_id = $1)', [organizationId]);
   await tx.query('DELETE FROM app_user WHERE organization_id = $1', [organizationId]);
   await tx.query('DELETE FROM client WHERE organization_id = $1', [organizationId]);
   await tx.query('DELETE FROM organization WHERE id = $1', [organizationId]);
