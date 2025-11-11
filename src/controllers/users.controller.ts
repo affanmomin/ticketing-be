@@ -18,9 +18,9 @@ import { emailService } from '../services/email.service';
  */
 export async function listUsersCtrl(req: FastifyRequest, reply: FastifyReply) {
   if (!req.user) throw unauthorized('Authentication required');
-  if (req.user.role !== 'ADMIN' && req.user.role !== 'EMPLOYEE') {
-    throw forbidden('Only internal users can list users');
-  }
+  // if (req.user.role !== 'ADMIN' && req.user.role !== 'EMPLOYEE') {
+  //   throw forbidden('Only internal users can list users');
+  // }
 
   const query = ListUsersQuery.parse(req.query);
 
