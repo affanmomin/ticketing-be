@@ -17,6 +17,8 @@ export default fp(async (app) => {
       '/auth/signup',
       '/auth/client-signup',
       '/auth/invite',
+      '/auth/forgot-password',
+      '/auth/reset-password',
       '/',
     ];
     if (unauthenticatedPaths.some(p => path === p) || path.startsWith('/docs')) return;

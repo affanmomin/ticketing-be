@@ -1,5 +1,6 @@
 import { PoolClient } from 'pg';
 import bcrypt from 'bcryptjs';
+import crypto from 'crypto';
 import { badRequest, unauthorized, forbidden } from '../utils/errors';
 import { Role } from '../types/common';
 
@@ -167,4 +168,98 @@ export async function getUserById(tx: PoolClient, userId: string): Promise<Login
     email: user.email,
     fullName: user.full_name,
   };
+}
+
+/**
+ * Request password reset: create token and return user info
+ */
+export async function requestPasswordReset(
+  tx: PoolClient,
+  email: string
+): Promise<{ userId: string; email: string; fullName: string; token: string } | null> {
+  // Find user by email
+  const { rows: users } = await tx.query(
+    'SELECT id, email, full_name FROM app_user WHERE email = $1 AND is_active = true',
+    [email]
+  );
+
+  // If user doesn't exist, return null (controller will handle the response)
+  // This prevents email enumeration attacks
+  if (users.length === 0) {
+    return null;
+  }
+
+  const user = users[0];
+
+  // Generate secure random token
+  const token = crypto.randomBytes(32).toString('hex');
+
+  // Token expires in 1 hour
+  const expiresAt = new Date();
+  expiresAt.setHours(expiresAt.getHours() + 1);
+
+  // Invalidate any existing unused tokens for this user
+  await tx.query(
+    'UPDATE password_reset_token SET used = true WHERE user_id = $1 AND used = false',
+    [user.id]
+  );
+
+  // Create new reset token
+  await tx.query(
+    'INSERT INTO password_reset_token (user_id, token, expires_at) VALUES ($1, $2, $3)',
+    [user.id, token, expiresAt]
+  );
+
+  return {
+    userId: user.id,
+    email: user.email,
+    fullName: user.full_name,
+    token,
+  };
+}
+
+/**
+ * Reset password: validate token and update password
+ */
+export async function resetPassword(
+  tx: PoolClient,
+  token: string,
+  newPassword: string
+): Promise<void> {
+  // Find valid token
+  const { rows: tokenRows } = await tx.query(
+    `SELECT prt.id, prt.user_id, prt.expires_at, prt.used
+     FROM password_reset_token prt
+     WHERE prt.token = $1`,
+    [token]
+  );
+
+  if (tokenRows.length === 0) {
+    throw badRequest('Invalid or expired reset token');
+  }
+
+  const tokenData = tokenRows[0];
+
+  // Check if token is already used
+  if (tokenData.used) {
+    throw badRequest('This reset token has already been used');
+  }
+
+  // Check if token is expired
+  const now = new Date();
+  if (new Date(tokenData.expires_at) < now) {
+    throw badRequest('This reset token has expired');
+  }
+
+  // Hash new password
+  const passwordHash = await bcrypt.hash(newPassword, 10);
+
+  // Update password
+  await tx.query('UPDATE app_user SET password_hash = $1 WHERE id = $2', [
+    passwordHash,
+    tokenData.user_id,
+  ]);
+
+  // Mark token as used
+  await tx.query('UPDATE password_reset_token SET used = true WHERE id = $1', [tokenData.id]);
 }

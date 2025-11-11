@@ -49,125 +49,170 @@ class EmailTestService {
       loginUrl = `${baseUrl}/login?creds=${encodeURIComponent(encodedCreds)}`;
     }
 
+    const roleColors = {
+      ADMIN: { bg: 'linear-gradient(135deg, #dc2626 0%, #991b1b 100%)', icon: '👑' },
+      EMPLOYEE: { bg: 'linear-gradient(135deg, #059669 0%, #047857 100%)', icon: '👨‍💼' },
+      CLIENT: { bg: 'linear-gradient(135deg, #2563eb 0%, #1e40af 100%)', icon: '🏢' },
+    };
+
+    const roleInfo = roleColors[userData.userType as keyof typeof roleColors] || {
+      bg: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+      icon: '👤',
+    };
+
     const htmlContent = `
       <!DOCTYPE html>
       <html>
       <head>
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Account Created - Ticketing System</title>
+        <title>Welcome to Ticketing System</title>
       </head>
-      <body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif; background-color: #f5f5f5; padding: 40px 20px;">
-        <table cellpadding="0" cellspacing="0" border="0" width="100%" style="max-width: 600px; margin: 0 auto; background-color: #ffffff;">
+      <body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Helvetica Neue', Arial, sans-serif; background: linear-gradient(135deg, #4c63d2 0%, #5a3d7a 100%); padding: 40px 20px;">
+        <table cellpadding="0" cellspacing="0" border="0" width="100%" style="max-width: 640px; margin: 0 auto;">
 
-          <!-- Header -->
+          <!-- Spacer -->
           <tr>
-            <td style="background-color: #1a1a1a; padding: 32px 40px; text-align: left;">
-              <h1 style="margin: 0; color: #ffffff; font-size: 24px; font-weight: 600; letter-spacing: -0.3px;">Ticketing System</h1>
-            </td>
+            <td style="height: 20px;"></td>
           </tr>
 
-          <!-- Content -->
+          <!-- Main Card -->
           <tr>
-            <td style="padding: 48px 40px;">
-              <h2 style="margin: 0 0 16px 0; color: #1a1a1a; font-size: 20px; font-weight: 600;">Welcome, ${userData.name}</h2>
+            <td style="background-color: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 20px 60px rgba(0,0,0,0.15);">
 
-              <p style="margin: 0 0 32px 0; color: #4a4a4a; font-size: 15px; line-height: 1.6;">
-                Your ${userData.userType} account has been successfully created${userData.organizationName ? ` for ${userData.organizationName}` : ''}. You can now access the ticketing system using the credentials below.
-              </p>
-
-              <!-- Account Details -->
-              <table cellpadding="0" cellspacing="0" border="0" width="100%" style="margin: 0 0 32px 0; border: 1px solid #e0e0e0; border-radius: 4px;">
+              <!-- Header with Gradient -->
+              <table cellpadding="0" cellspacing="0" border="0" width="100%">
                 <tr>
-                  <td style="padding: 20px; background-color: #fafafa; border-bottom: 1px solid #e0e0e0;">
-                    <table cellpadding="0" cellspacing="0" border="0" width="100%">
-                      <tr>
-                        <td style="padding: 0 0 12px 0; color: #666666; font-size: 13px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.5px;">Email Address</td>
-                      </tr>
-                      <tr>
-                        <td style="padding: 0; color: #1a1a1a; font-size: 15px; font-weight: 400;">${userData.email}</td>
-                      </tr>
-                    </table>
-                  </td>
-                </tr>
-                ${userData.password ? `
-                <tr>
-                  <td style="padding: 20px; background-color: #fafafa; border-bottom: 1px solid #e0e0e0;">
-                    <table cellpadding="0" cellspacing="0" border="0" width="100%">
-                      <tr>
-                        <td style="padding: 0 0 12px 0; color: #666666; font-size: 13px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.5px;">Password</td>
-                      </tr>
-                      <tr>
-                        <td style="padding: 0; color: #1a1a1a; font-size: 15px; font-weight: 400; font-family: 'Courier New', monospace;">${userData.password}</td>
-                      </tr>
-                    </table>
-                  </td>
-                </tr>
-                ` : ''}
-                <tr>
-                  <td style="padding: 20px; background-color: #fafafa;">
-                    <table cellpadding="0" cellspacing="0" border="0" width="100%">
-                      <tr>
-                        <td style="padding: 0 0 12px 0; color: #666666; font-size: 13px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.5px;">Role</td>
-                      </tr>
-                      <tr>
-                        <td style="padding: 0; color: #1a1a1a; font-size: 15px; font-weight: 400;">${userData.userType}</td>
-                      </tr>
-                    </table>
+                  <td style="background: ${roleInfo.bg}; padding: 48px 40px; text-align: center;">
+                    <div style="width: 64px; height: 64px; background-color: rgba(255,255,255,0.2); border-radius: 50%; margin: 0 auto 20px; line-height: 64px; font-size: 32px;">
+                      ${roleInfo.icon}
+                    </div>
+                    <h1 style="margin: 0; color: #ffffff; font-size: 28px; font-weight: 700; letter-spacing: -0.5px;">Welcome Aboard!</h1>
+                    <p style="margin: 12px 0 0 0; color: rgba(255,255,255,0.9); font-size: 16px; font-weight: 400;">Your account has been created</p>
                   </td>
                 </tr>
               </table>
 
-              ${userData.password ? `
-              <!-- Auto-Login Notice -->
-              <div style="background-color: #f8f9fa; border-left: 3px solid #495057; padding: 16px 20px; margin: 0 0 32px 0;">
-                <p style="margin: 0; color: #495057; font-size: 14px; line-height: 1.5;">
-                  <strong>Quick Login:</strong> Click the button below to automatically log in with your credentials.
-                </p>
-              </div>
-              ` : ''}
-
-              <!-- CTA Button -->
-              <table cellpadding="0" cellspacing="0" border="0" width="100%" style="margin: 0 0 32px 0;">
+              <!-- Content -->
+              <table cellpadding="0" cellspacing="0" border="0" width="100%">
                 <tr>
-                  <td align="left">
-                    <a href="${loginUrl}" style="display: inline-block; background-color: #1a1a1a; color: #ffffff; text-decoration: none; padding: 14px 32px; font-size: 15px; font-weight: 500; border-radius: 2px;">
-                      ${userData.password ? 'Access System' : 'Log In'}
-                    </a>
+                  <td style="padding: 48px 40px;">
+
+                    <p style="margin: 0 0 24px 0; color: #2d3748; font-size: 16px; line-height: 1.7; font-weight: 400;">
+                      Hello <strong style="color: #1a202c; font-weight: 600;">${userData.name}</strong>,
+                    </p>
+
+                    <p style="margin: 0 0 32px 0; color: #4a5568; font-size: 15px; line-height: 1.7;">
+                      Your <strong style="color: #2d3748;">${userData.userType}</strong> account has been successfully created${userData.organizationName ? ` for <strong>${userData.organizationName}</strong>` : ''}. You're all set to start managing tickets efficiently!
+                    </p>
+
+                    <!-- Account Details Card -->
+                    <table cellpadding="0" cellspacing="0" border="0" width="100%" style="margin: 0 0 32px 0; background-color: #f7fafc; border-radius: 8px; border: 1px solid #e2e8f0;">
+                      <tr>
+                        <td style="padding: 24px;">
+                          <p style="margin: 0 0 16px 0; color: #718096; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px;">
+                            Account Details
+                          </p>
+                          <table cellpadding="0" cellspacing="0" border="0" width="100%">
+                            <tr>
+                              <td style="padding: 8px 0; color: #4a5568; font-size: 14px; font-weight: 500;">Email:</td>
+                              <td style="padding: 8px 0; color: #2d3748; font-size: 14px; font-weight: 600; text-align: right;">${userData.email}</td>
+                            </tr>
+                            <tr>
+                              <td style="padding: 8px 0; color: #4a5568; font-size: 14px; font-weight: 500;">Role:</td>
+                              <td style="padding: 8px 0; text-align: right;">
+                                <span style="display: inline-block; padding: 4px 12px; background: ${roleInfo.bg}; color: #ffffff; border-radius: 12px; font-size: 12px; font-weight: 600;">${userData.userType}</span>
+                              </td>
+                            </tr>
+                            ${userData.password ? `
+                            <tr>
+                              <td style="padding: 8px 0; color: #4a5568; font-size: 14px; font-weight: 500;">Password:</td>
+                              <td style="padding: 8px 0; color: #2d3748; font-size: 14px; font-weight: 600; text-align: right; font-family: 'Courier New', monospace;">${userData.password}</td>
+                            </tr>
+                            ` : ''}
+                          </table>
+                        </td>
+                      </tr>
+                    </table>
+
+                    ${userData.password ? `
+                    <!-- Auto-Login Notice -->
+                    <table cellpadding="0" cellspacing="0" border="0" width="100%" style="margin: 0 0 32px 0; background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%); border-radius: 8px; border-left: 4px solid #10b981;">
+                      <tr>
+                        <td style="padding: 20px;">
+                          <p style="margin: 0; color: #065f46; font-size: 14px; line-height: 1.6; font-weight: 500;">
+                            <strong style="font-weight: 600;">✨ Quick Login:</strong> Click the button below and your credentials will be automatically filled in. No typing required!
+                          </p>
+                        </td>
+                      </tr>
+                    </table>
+                    ` : ''}
+
+                    <!-- CTA Button -->
+                    <table cellpadding="0" cellspacing="0" border="0" width="100%" style="margin: 0 0 32px 0;">
+                      <tr>
+                        <td align="center">
+                          <a href="${loginUrl}" style="display: inline-block; background: ${roleInfo.bg}; color: #ffffff; text-decoration: none; padding: 16px 48px; font-size: 16px; font-weight: 600; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.15);">
+                            ${userData.password ? '🚀 Login with Auto-Fill' : '🔑 Access System'}
+                          </a>
+                        </td>
+                      </tr>
+                    </table>
+
+                    ${userData.password ? `
+                    <!-- Security Note -->
+                    <table cellpadding="0" cellspacing="0" border="0" width="100%" style="margin: 0 0 32px 0; background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%); border-radius: 8px; border-left: 4px solid #f59e0b;">
+                      <tr>
+                        <td style="padding: 20px;">
+                          <p style="margin: 0; color: #92400e; font-size: 14px; line-height: 1.6; font-weight: 500;">
+                            <strong style="font-weight: 600;">🔒 Security Recommendation:</strong> Please change your password after your first login for enhanced security.
+                          </p>
+                        </td>
+                      </tr>
+                    </table>
+                    ` : ''}
+
+                    <!-- Divider -->
+                    <table cellpadding="0" cellspacing="0" border="0" width="100%" style="margin: 32px 0;">
+                      <tr>
+                        <td style="height: 1px; background-color: #e2e8f0;"></td>
+                      </tr>
+                    </table>
+
+                    <!-- Support -->
+                    <p style="margin: 0 0 8px 0; color: #4a5568; font-size: 15px; line-height: 1.6;">
+                      Need help? Our support team is here for you.
+                    </p>
+
+                    <p style="margin: 24px 0 0 0; color: #2d3748; font-size: 15px; line-height: 1.6;">
+                      Best regards,<br>
+                      <span style="font-weight: 600; color: #1a202c;">Ticketing System Team</span>
+                    </p>
+
                   </td>
                 </tr>
               </table>
 
-              ${userData.password ? `
-              <!-- Security Note -->
-              <div style="background-color: #fff3cd; border-left: 3px solid #ffc107; padding: 16px 20px; margin: 0 0 32px 0;">
-                <p style="margin: 0; color: #856404; font-size: 14px; line-height: 1.5;">
-                  <strong>Security Recommendation:</strong> Please change your password after your first login.
-                </p>
-              </div>
-              ` : ''}
+              <!-- Footer -->
+              <table cellpadding="0" cellspacing="0" border="0" width="100%" style="background-color: #f7fafc; border-top: 1px solid #e2e8f0;">
+                <tr>
+                  <td style="padding: 32px 40px; text-align: center;">
+                    <p style="margin: 0 0 8px 0; color: #718096; font-size: 12px; line-height: 1.5;">
+                      This is an automated message. Please do not reply to this email.
+                    </p>
+                    <p style="margin: 0; color: #a0aec0; font-size: 11px; line-height: 1.5;">
+                      © ${new Date().getFullYear()} Ticketing System. All rights reserved.
+                    </p>
+                  </td>
+                </tr>
+              </table>
 
-              <p style="margin: 32px 0 0 0; color: #4a4a4a; font-size: 15px; line-height: 1.6;">
-                If you have any questions or need assistance, please contact our support team.
-              </p>
-
-              <p style="margin: 24px 0 0 0; color: #1a1a1a; font-size: 15px; line-height: 1.6;">
-                Best regards,<br>
-                <span style="font-weight: 500;">Ticketing System Team</span>
-              </p>
             </td>
           </tr>
 
-          <!-- Footer -->
+          <!-- Spacer -->
           <tr>
-            <td style="background-color: #fafafa; padding: 32px 40px; border-top: 1px solid #e0e0e0;">
-              <p style="margin: 0 0 8px 0; color: #666666; font-size: 12px; line-height: 1.5;">
-                This is an automated message. Please do not reply to this email.
-              </p>
-              <p style="margin: 0; color: #999999; font-size: 12px; line-height: 1.5;">
-                If you did not expect this email, please contact our support team immediately.
-              </p>
-            </td>
+            <td style="height: 20px;"></td>
           </tr>
 
         </table>

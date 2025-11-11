@@ -33,7 +33,18 @@ export const MeResponse = z.object({
   fullName: z.string(),
 });
 
+export const ForgotPasswordBody = z.object({
+  email: z.string().email(),
+});
+
+export const ResetPasswordBody = z.object({
+  token: z.string().min(1),
+  password: z.string().min(8),
+});
+
 export type AdminSignupBodyT = z.infer<typeof AdminSignupBody>;
 export type LoginBodyT = z.infer<typeof LoginBody>;
 export type LoginResponseT = z.infer<typeof LoginResponse>;
 export type MeResponseT = z.infer<typeof MeResponse>;
+export type ForgotPasswordBodyT = z.infer<typeof ForgotPasswordBody>;
+export type ResetPasswordBodyT = z.infer<typeof ResetPasswordBody>;
