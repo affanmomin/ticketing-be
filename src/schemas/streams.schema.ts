@@ -8,12 +8,14 @@ export const ListStreamsQuery = z.object({
 export const CreateStreamBody = z.object({
   name: z.string().min(1).max(255),
   description: z.string().max(2000).optional(),
+  parentStreamId: z.string().uuid().optional(),
 });
 
 export const UpdateStreamBody = z.object({
   name: z.string().min(1).max(255).optional(),
   description: z.string().max(2000).optional(),
   active: z.boolean().optional(),
+  parentStreamId: z.string().uuid().optional(),
 });
 
 export type ListStreamsQueryT = z.infer<typeof ListStreamsQuery>;

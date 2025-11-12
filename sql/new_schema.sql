@@ -95,6 +95,7 @@ CREATE INDEX ix_project_member_user ON project_member(user_id);
 CREATE TABLE stream (
   id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   project_id  uuid NOT NULL REFERENCES project(id) ON DELETE CASCADE,
+  parent_stream_id uuid NULL REFERENCES stream(id) ON DELETE CASCADE,
   name        text NOT NULL,
   description text,
   active      boolean NOT NULL DEFAULT true,
@@ -105,6 +106,7 @@ CREATE TABLE stream (
 -- Target for composite FK from ticket
 CREATE UNIQUE INDEX ux_stream_id_project ON stream(id, project_id);
 CREATE INDEX ix_stream_project ON stream(project_id);
+CREATE INDEX ix_stream_parent ON stream(parent_stream_id) WHERE parent_stream_id IS NOT NULL;
 CREATE TRIGGER trg_stream_updated_at
 BEFORE UPDATE ON stream
 FOR EACH ROW EXECUTE FUNCTION set_updated_at();

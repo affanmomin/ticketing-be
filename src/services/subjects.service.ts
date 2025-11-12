@@ -27,14 +27,14 @@ export async function listSubjects(
   if (projectRows.length === 0) throw forbidden('Project not found');
 
   const { rows: countRows } = await tx.query(
-    'SELECT COUNT(*)::int as total FROM subject WHERE project_id = $1',
+    'SELECT COUNT(*)::int as total FROM subject WHERE project_id = $1 AND active = true',
     [projectId]
   );
   const total = countRows[0].total;
 
   const { rows } = await tx.query(
     `SELECT id, project_id, name, description, active, created_at, updated_at
-     FROM subject WHERE project_id = $1
+     FROM subject WHERE project_id = $1 AND active = true
      ORDER BY created_at DESC
      LIMIT $2 OFFSET $3`,
     [projectId, limit, offset]

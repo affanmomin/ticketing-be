@@ -488,13 +488,13 @@ export async function getProjectTaxonomy(
 
   // Get streams
   const { rows: streamRows } = await tx.query(
-    `SELECT id, name, active FROM stream WHERE project_id = $1 ORDER BY name`,
+    `SELECT id, name, active FROM stream WHERE project_id = $1 AND active = true ORDER BY name`,
     [projectId]
   );
 
   // Get subjects
   const { rows: subjectRows } = await tx.query(
-    `SELECT id, name, active FROM subject WHERE project_id = $1 ORDER BY name`,
+    `SELECT id, name, active FROM subject WHERE project_id = $1 AND active = true ORDER BY name`,
     [projectId]
   );
 
