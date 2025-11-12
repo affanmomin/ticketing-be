@@ -7,7 +7,7 @@ import { forbidden, unauthorized } from '../utils/errors';
 
 export async function listSubjectsCtrl(req: FastifyRequest, reply: FastifyReply) {
   if (!req.user) throw unauthorized('Authentication required');
-  if (req.user.role !== 'ADMIN') throw forbidden('Only admins can list subjects');
+  // if (req.user.role !== 'ADMIN') throw forbidden('Only admins can list subjects');
 
   const { id: projectId } = IdParam.parse(req.params);
   const query = ListSubjectsQuery.parse(req.query);
@@ -36,7 +36,7 @@ export async function listSubjectsCtrl(req: FastifyRequest, reply: FastifyReply)
 
 export async function getSubjectCtrl(req: FastifyRequest, reply: FastifyReply) {
   if (!req.user) throw unauthorized('Authentication required');
-  if (req.user.role !== 'ADMIN') throw forbidden('Only admins can view subjects');
+  // if (req.user.role !== 'ADMIN') throw forbidden('Only admins can view subjects');
 
   const { id: subjectId } = IdParam.parse(req.params);
 
@@ -58,7 +58,7 @@ export async function getSubjectCtrl(req: FastifyRequest, reply: FastifyReply) {
 
 export async function createSubjectCtrl(req: FastifyRequest, reply: FastifyReply) {
   if (!req.user) throw unauthorized('Authentication required');
-  if (req.user.role !== 'ADMIN') throw forbidden('Only admins can create subjects');
+  // if (req.user.role !== 'ADMIN') throw forbidden('Only admins can create subjects');
 
   const { id: projectId } = IdParam.parse(req.params);
   const body = CreateSubjectBody.parse(req.body);
@@ -87,7 +87,7 @@ export async function createSubjectCtrl(req: FastifyRequest, reply: FastifyReply
 
 export async function updateSubjectCtrl(req: FastifyRequest, reply: FastifyReply) {
   if (!req.user) throw unauthorized('Authentication required');
-  if (req.user.role !== 'ADMIN') throw forbidden('Only admins can update subjects');
+  // if (req.user.role !== 'ADMIN') throw forbidden('Only admins can update subjects');
 
   const { id: subjectId } = IdParam.parse(req.params);
   const body = UpdateSubjectBody.parse(req.body);

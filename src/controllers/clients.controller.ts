@@ -33,7 +33,7 @@ export async function listClientsCtrl(req: FastifyRequest, reply: FastifyReply) 
  */
 export async function getClientCtrl(req: FastifyRequest, reply: FastifyReply) {
   if (!req.user) throw unauthorized('Authentication required');
-  if (req.user.role !== 'ADMIN') throw forbidden('Only admins can view clients');
+  // if (req.user.role !== 'ADMIN') throw forbidden('Only admins can view clients');
 
   const { id: clientId } = IdParam.parse(req.params);
 

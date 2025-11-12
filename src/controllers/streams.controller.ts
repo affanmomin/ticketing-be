@@ -17,7 +17,7 @@ import { forbidden, unauthorized } from '../utils/errors';
  */
 export async function listStreamsCtrl(req: FastifyRequest, reply: FastifyReply) {
   if (!req.user) throw unauthorized('Authentication required');
-  if (req.user.role !== 'ADMIN') throw forbidden('Only admins can list streams');
+  // if (req.user.role !== 'ADMIN') throw forbidden('Only admins can list streams');
 
   const { id: projectId } = IdParam.parse(req.params);
   const query = ListStreamsQuery.parse(req.query);
@@ -49,7 +49,7 @@ export async function listStreamsCtrl(req: FastifyRequest, reply: FastifyReply) 
  */
 export async function getStreamCtrl(req: FastifyRequest, reply: FastifyReply) {
   if (!req.user) throw unauthorized('Authentication required');
-  if (req.user.role !== 'ADMIN') throw forbidden('Only admins can view streams');
+  // if (req.user.role !== 'ADMIN') throw forbidden('Only admins can view streams');
 
   const { id: streamId } = IdParam.parse(req.params);
 
@@ -74,7 +74,7 @@ export async function getStreamCtrl(req: FastifyRequest, reply: FastifyReply) {
  */
 export async function createStreamCtrl(req: FastifyRequest, reply: FastifyReply) {
   if (!req.user) throw unauthorized('Authentication required');
-  if (req.user.role !== 'ADMIN') throw forbidden('Only admins can create streams');
+  // if (req.user.role !== 'ADMIN') throw forbidden('Only admins can create streams');
 
   const { id: projectId } = IdParam.parse(req.params);
   const body = CreateStreamBody.parse(req.body);
@@ -107,7 +107,7 @@ export async function createStreamCtrl(req: FastifyRequest, reply: FastifyReply)
  */
 export async function updateStreamCtrl(req: FastifyRequest, reply: FastifyReply) {
   if (!req.user) throw unauthorized('Authentication required');
-  if (req.user.role !== 'ADMIN') throw forbidden('Only admins can update streams');
+  // if (req.user.role !== 'ADMIN') throw forbidden('Only admins can update streams');
 
   const { id: streamId } = IdParam.parse(req.params);
   const body = UpdateStreamBody.parse(req.body);
@@ -144,7 +144,7 @@ export async function updateStreamCtrl(req: FastifyRequest, reply: FastifyReply)
  */
 export async function listParentStreamsCtrl(req: FastifyRequest, reply: FastifyReply) {
   if (!req.user) throw unauthorized('Authentication required');
-  if (req.user.role !== 'ADMIN') throw forbidden('Only admins can list streams');
+  // if (req.user.role !== 'ADMIN') throw forbidden('Only admins can list streams');
 
   const { id: projectId } = IdParam.parse(req.params);
 
@@ -174,7 +174,7 @@ export async function listParentStreamsCtrl(req: FastifyRequest, reply: FastifyR
  */
 export async function listChildStreamsCtrl(req: FastifyRequest, reply: FastifyReply) {
   if (!req.user) throw unauthorized('Authentication required');
-  if (req.user.role !== 'ADMIN') throw forbidden('Only admins can list streams');
+  // if (req.user.role !== 'ADMIN') throw forbidden('Only admins can list streams');
 
   const { id: parentStreamId } = IdParam.parse(req.params);
 

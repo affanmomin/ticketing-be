@@ -59,9 +59,9 @@ export async function getUserCtrl(req: FastifyRequest, reply: FastifyReply) {
   const { id: userId } = IdParam.parse(req.params);
 
   // Self-access or admin
-  if (req.user.userId !== userId && req.user.role !== 'ADMIN') {
-    throw forbidden('Can only view own profile');
-  }
+  // if (req.user.userId !== userId && req.user.role !== 'ADMIN') {
+  //   throw forbidden('Can only view own profile');
+  // }
 
   const client = await pool.connect();
   try {
