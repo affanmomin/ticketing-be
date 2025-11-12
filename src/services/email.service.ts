@@ -1,4 +1,6 @@
 import nodemailer from 'nodemailer';
+import { readFileSync } from 'fs';
+import { join } from 'path';
 import { encodeCredentials } from '../utils/credentials';
 
 interface EmailUser {
@@ -14,6 +16,69 @@ interface WelcomeEmailData extends EmailUser {
 
 class EmailService {
   private transporter: nodemailer.Transporter;
+  private logoBuffer: Buffer | null = null;
+
+  /**
+   * Get logo URL for emails
+   * Uses LOGO_URL env var if set, otherwise uses CID attachment (cid:logo)
+   */
+  private getLogoUrl(): string {
+    // If LOGO_URL is set in env, use it (preferred for production)
+    if (process.env.LOGO_URL) {
+      return process.env.LOGO_URL;
+    }
+
+    // Otherwise, use CID attachment (most reliable for email clients)
+    return 'cid:logo';
+  }
+
+  /**
+   * Get logo attachment for CID embedding
+   * Returns undefined if LOGO_URL is set (no attachment needed)
+   */
+  private getLogoAttachment(): Array<{ filename: string; path?: string; cid: string; content?: Buffer }> | undefined {
+    // If LOGO_URL is set, no attachment needed
+    if (process.env.LOGO_URL) {
+      return undefined;
+    }
+
+    // Load logo buffer if not already loaded
+    if (!this.logoBuffer) {
+      try {
+        // Try multiple possible paths (for both dev and production)
+        const possiblePaths = [
+          join(__dirname, '../../saait-logo.jpg'), // From dist/services/
+          join(__dirname, '../saait-logo.jpg'),    // From src/services/ (dev)
+          join(process.cwd(), 'saait-logo.jpg'),   // From project root
+        ];
+
+        for (const logoPath of possiblePaths) {
+          try {
+            this.logoBuffer = readFileSync(logoPath);
+            break;
+          } catch {
+            // Try next path
+            continue;
+          }
+        }
+
+        if (!this.logoBuffer) {
+          console.warn('Logo file not found, emails will be sent without logo');
+          return undefined;
+        }
+      } catch (error) {
+        console.warn('Logo file not found, using placeholder:', error instanceof Error ? error.message : String(error));
+        return undefined;
+      }
+    }
+
+    // Return CID attachment
+    return [{
+      filename: 'saait-logo.jpg',
+      cid: 'logo',
+      content: this.logoBuffer,
+    }];
+  }
 
   constructor() {
     // Debug: Log SMTP configuration (without password)
@@ -42,18 +107,19 @@ class EmailService {
     try {
       const isClient = userData.userType === 'CLIENT';
       const subject = isClient
-        ? 'Welcome to Our Ticketing System - Client Account Created'
-        : 'Welcome to Our Ticketing System - Your Account Has Been Created';
+        ? 'Welcome to Sahra-Al-Aman Information Technology (SAAIT) - Client Account Created'
+        : 'Welcome to Sahra-Al-Aman Information Technology (SAAIT) - Your Account Has Been Created';
 
       const htmlContent = this.generateWelcomeEmailHtml(userData, isClient);
       const textContent = this.generateWelcomeEmailText(userData, isClient);
 
       await this.transporter.sendMail({
-        from: process.env.SMTP_FROM || '"Ticketing System" <noreply@example.com>',
+        from: process.env.SMTP_FROM || '"Sahra-Al-Aman Information Technology (SAAIT)" <noreply@example.com>',
         to: userData.email,
         subject: subject,
         text: textContent,
         html: htmlContent,
+        attachments: this.getLogoAttachment(),
       });
 
       console.log(`Welcome email sent successfully to ${userData.email}`);
@@ -77,7 +143,7 @@ class EmailService {
         <head>
           <meta charset="utf-8">
           <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          <title>Client Account Created - Ticketing System</title>
+          <title>Client Account Created - Sahra-Al-Aman Information Technology (SAAIT)</title>
         </head>
         <body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Helvetica Neue', Arial, sans-serif; background: linear-gradient(135deg, #4c63d2 0%, #5a3d7a 100%); padding: 40px 20px;">
           <table cellpadding="0" cellspacing="0" border="0" width="100%" style="max-width: 640px; margin: 0 auto;">
@@ -95,11 +161,9 @@ class EmailService {
                 <table cellpadding="0" cellspacing="0" border="0" width="100%">
                   <tr>
                     <td style="background: linear-gradient(135deg, #2563eb 0%, #1e40af 100%); padding: 48px 40px; text-align: center;">
-                      <div style="width: 64px; height: 64px; background-color: rgba(255,255,255,0.2); border-radius: 50%; margin: 0 auto 20px; line-height: 64px; font-size: 32px;">
-                        🏢
-                      </div>
+                      <img src="${this.getLogoUrl()}" alt="SAAIT Logo" style="width: 120px; height: auto; margin: 0 auto 20px; display: block; max-width: 120px;" />
                       <h1 style="margin: 0; color: #ffffff; font-size: 28px; font-weight: 700; letter-spacing: -0.5px;">Account Created</h1>
-                      <p style="margin: 12px 0 0 0; color: rgba(255,255,255,0.9); font-size: 16px; font-weight: 400;">Welcome to our ticketing system</p>
+                      <p style="margin: 12px 0 0 0; color: rgba(255,255,255,0.9); font-size: 16px; font-weight: 400;">Welcome to Sahra-Al-Aman Information Technology (SAAIT)</p>
                     </td>
                   </tr>
                 </table>
@@ -114,19 +178,8 @@ class EmailService {
                       </p>
 
                       <p style="margin: 0 0 32px 0; color: #4a5568; font-size: 15px; line-height: 1.7;">
-                        Your client account has been successfully created in our ticketing system. You can now access the system to manage your tickets and collaborate with our team.
+                        Your client account has been successfully created in Sahra-Al-Aman Information Technology (SAAIT) ticketing system. You can now access the system to manage your tickets and collaborate with our team.
                       </p>
-
-                      <!-- CTA Button -->
-                      <table cellpadding="0" cellspacing="0" border="0" width="100%" style="margin: 0 0 32px 0;">
-                        <tr>
-                          <td align="center">
-                            <a href="${loginUrl}" style="display: inline-block; background: linear-gradient(135deg, #2563eb 0%, #1e40af 100%); color: #ffffff; text-decoration: none; padding: 16px 48px; font-size: 16px; font-weight: 600; border-radius: 8px; box-shadow: 0 4px 12px rgba(37, 99, 235, 0.4);">
-                              🔑 Access Ticketing System
-                            </a>
-                          </td>
-                        </tr>
-                      </table>
 
                       <!-- Info Card -->
                       <table cellpadding="0" cellspacing="0" border="0" width="100%" style="margin: 0 0 32px 0; background-color: #f7fafc; border-radius: 8px; border: 1px solid #e2e8f0;">
@@ -156,7 +209,7 @@ class EmailService {
 
                       <p style="margin: 24px 0 0 0; color: #2d3748; font-size: 15px; line-height: 1.6;">
                         Best regards,<br>
-                        <span style="font-weight: 600; color: #1a202c;">Ticketing System Team</span>
+                        <span style="font-weight: 600; color: #1a202c;">Sahra-Al-Aman Information Technology (SAAIT) Team</span>
                       </p>
 
                     </td>
@@ -167,11 +220,12 @@ class EmailService {
                 <table cellpadding="0" cellspacing="0" border="0" width="100%" style="background-color: #f7fafc; border-top: 1px solid #e2e8f0;">
                   <tr>
                     <td style="padding: 32px 40px; text-align: center;">
+                      <img src="${this.getLogoUrl()}" alt="SAAIT Logo" style="width: 80px; height: auto; margin: 0 auto 16px; display: block; max-width: 80px; opacity: 0.7;" />
                       <p style="margin: 0 0 8px 0; color: #718096; font-size: 12px; line-height: 1.5;">
                         This is an automated message. Please do not reply to this email.
                       </p>
                       <p style="margin: 0; color: #a0aec0; font-size: 11px; line-height: 1.5;">
-                        © ${new Date().getFullYear()} Ticketing System. All rights reserved.
+                        © ${new Date().getFullYear()} Sahra-Al-Aman Information Technology (SAAIT). All rights reserved.
                       </p>
                     </td>
                   </tr>
@@ -195,14 +249,14 @@ Client Account Created
 
 Hello ${clientName},
 
-Your client account has been successfully created in our ticketing system.
+Your client account has been successfully created in Sahra-Al-Aman Information Technology (SAAIT) ticketing system.
 
-You can access the ticketing system at: ${loginUrl}
+You can access the SAAIT ticketing system at: ${loginUrl}
 
 If you have any questions or need assistance, please don't hesitate to contact our support team.
 
 Best regards,
-The Ticketing System Team
+The Sahra-Al-Aman Information Technology (SAAIT) Team
 
 ---
 This is an automated message. Please do not reply to this email.
@@ -210,11 +264,12 @@ If you didn't expect this email, please contact our support team immediately.
       `.trim();
 
       await this.transporter.sendMail({
-        from: process.env.SMTP_FROM || '"Ticketing System" <noreply@example.com>',
+        from: process.env.SMTP_FROM || '"Sahra-Al-Aman Information Technology (SAAIT)" <noreply@example.com>',
         to: clientEmail,
-        subject: 'Client Account Created - Ticketing System',
+        subject: 'Client Account Created - Sahra-Al-Aman Information Technology (SAAIT)',
         text: textContent,
         html: htmlContent,
+        attachments: this.getLogoAttachment(),
       });
 
       console.log(`Client notification email sent successfully to ${clientEmail}`);
@@ -256,7 +311,7 @@ If you didn't expect this email, please contact our support team immediately.
       <head>
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Welcome to Ticketing System</title>
+        <title>Welcome to Sahra-Al-Aman Information Technology (SAAIT)</title>
       </head>
       <body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Helvetica Neue', Arial, sans-serif; background: linear-gradient(135deg, #4c63d2 0%, #5a3d7a 100%); padding: 40px 20px;">
         <table cellpadding="0" cellspacing="0" border="0" width="100%" style="max-width: 640px; margin: 0 auto;">
@@ -274,9 +329,7 @@ If you didn't expect this email, please contact our support team immediately.
               <table cellpadding="0" cellspacing="0" border="0" width="100%">
                 <tr>
                   <td style="background: ${roleInfo.bg}; padding: 48px 40px; text-align: center;">
-                    <div style="width: 64px; height: 64px; background-color: rgba(255,255,255,0.2); border-radius: 50%; margin: 0 auto 20px; line-height: 64px; font-size: 32px;">
-                      ${roleInfo.icon}
-                    </div>
+                    <img src="${this.getLogoUrl()}" alt="SAAIT Logo" style="width: 120px; height: auto; margin: 0 auto 20px; display: block; max-width: 120px;" />
                     <h1 style="margin: 0; color: #ffffff; font-size: 28px; font-weight: 700; letter-spacing: -0.5px;">Welcome Aboard!</h1>
                     <p style="margin: 12px 0 0 0; color: rgba(255,255,255,0.9); font-size: 16px; font-weight: 400;">Your account has been created</p>
                   </td>
@@ -376,7 +429,7 @@ If you didn't expect this email, please contact our support team immediately.
 
                     <p style="margin: 24px 0 0 0; color: #2d3748; font-size: 15px; line-height: 1.6;">
                       Best regards,<br>
-                      <span style="font-weight: 600; color: #1a202c;">Ticketing System Team</span>
+                      <span style="font-weight: 600; color: #1a202c;">Sahra-Al-Aman Information Technology (SAAIT) Team</span>
                     </p>
 
                   </td>
@@ -391,7 +444,7 @@ If you didn't expect this email, please contact our support team immediately.
                       This is an automated message. Please do not reply to this email.
                     </p>
                     <p style="margin: 0; color: #a0aec0; font-size: 11px; line-height: 1.5;">
-                      © ${new Date().getFullYear()} Ticketing System. All rights reserved.
+                      © ${new Date().getFullYear()} Sahra-Al-Aman Information Technology (SAAIT). All rights reserved.
                     </p>
                   </td>
                 </tr>
@@ -425,11 +478,11 @@ If you didn't expect this email, please contact our support team immediately.
     }
 
     return `
-Welcome to Our Ticketing System!
+Welcome to Sahra-Al-Aman Information Technology (SAAIT)!
 
 Hello ${userData.name},
 
-Your ${isClient ? 'client' : 'team member'} account has been successfully created in our ticketing system.
+Your ${isClient ? 'client' : 'team member'} account has been successfully created in Sahra-Al-Aman Information Technology (SAAIT) ticketing system.
 
 Account Details:
 - Email: ${userData.email}
@@ -446,12 +499,12 @@ ${userData.password ?
   ''
 }
 
-You can now access the ticketing system at: ${loginUrl}
+You can now access the SAAIT ticketing system at: ${loginUrl}
 
 If you have any questions or need assistance, please don't hesitate to contact our support team.
 
 Best regards,
-The Ticketing System Team
+The Sahra-Al-Aman Information Technology (SAAIT) Team
 
 ---
 This is an automated message. Please do not reply to this email.
@@ -471,7 +524,7 @@ If you didn't expect this email, please contact our support team immediately.
       const baseUrl = process.env.APP_BASE_URL || 'http://localhost:5173';
       const resetUrl = `${baseUrl}/reset-password?token=${encodeURIComponent(resetToken)}`;
 
-      const subject = 'Password Reset Request - Ticketing System';
+      const subject = 'Password Reset Request - Sahra-Al-Aman Information Technology (SAAIT)';
 
       const htmlContent = this.generatePasswordResetEmailHtml(fullName, resetUrl);
       const textContent = this.generatePasswordResetEmailText(fullName, resetUrl);
@@ -481,11 +534,12 @@ If you didn't expect this email, please contact our support team immediately.
       const actualEmail = recipientEmail !== email ? email : null;
 
       await this.transporter.sendMail({
-        from: process.env.SMTP_FROM || '"Ticketing System" <noreply@example.com>',
+        from: process.env.SMTP_FROM || '"Sahra-Al-Aman Information Technology (SAAIT)" <noreply@example.com>',
         to: recipientEmail,
         subject: subject,
         text: textContent,
         html: htmlContent,
+        attachments: this.getLogoAttachment(),
       });
 
       if (actualEmail) {
@@ -506,7 +560,7 @@ If you didn't expect this email, please contact our support team immediately.
       <head>
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Password Reset - Ticketing System</title>
+        <title>Password Reset - Sahra-Al-Aman Information Technology (SAAIT)</title>
       </head>
       <body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Helvetica Neue', Arial, sans-serif; background: linear-gradient(135deg, #4c63d2 0%, #5a3d7a 100%); padding: 40px 20px;">
         <table cellpadding="0" cellspacing="0" border="0" width="100%" style="max-width: 640px; margin: 0 auto;">
@@ -524,9 +578,7 @@ If you didn't expect this email, please contact our support team immediately.
               <table cellpadding="0" cellspacing="0" border="0" width="100%">
                 <tr>
                   <td style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 48px 40px; text-align: center;">
-                    <div style="width: 64px; height: 64px; background-color: rgba(255,255,255,0.2); border-radius: 50%; margin: 0 auto 20px; line-height: 64px; font-size: 32px;">
-                      🔐
-                    </div>
+                    <img src="${this.getLogoUrl()}" alt="SAAIT Logo" style="width: 120px; height: auto; margin: 0 auto 20px; display: block; max-width: 120px;" />
                     <h1 style="margin: 0; color: #ffffff; font-size: 28px; font-weight: 700; letter-spacing: -0.5px;">Password Reset</h1>
                     <p style="margin: 12px 0 0 0; color: rgba(255,255,255,0.9); font-size: 16px; font-weight: 400;">Secure your account</p>
                   </td>
@@ -618,7 +670,7 @@ If you didn't expect this email, please contact our support team immediately.
 
                     <p style="margin: 24px 0 0 0; color: #2d3748; font-size: 15px; line-height: 1.6;">
                       Best regards,<br>
-                      <span style="font-weight: 600; color: #1a202c;">Ticketing System Team</span>
+                      <span style="font-weight: 600; color: #1a202c;">Sahra-Al-Aman Information Technology (SAAIT) Team</span>
                     </p>
 
                   </td>
@@ -633,7 +685,7 @@ If you didn't expect this email, please contact our support team immediately.
                       This is an automated message. Please do not reply to this email.
                     </p>
                     <p style="margin: 0; color: #a0aec0; font-size: 11px; line-height: 1.5;">
-                      © ${new Date().getFullYear()} Ticketing System. All rights reserved.
+                      © ${new Date().getFullYear()} Sahra-Al-Aman Information Technology (SAAIT). All rights reserved.
                     </p>
                   </td>
                 </tr>
@@ -655,7 +707,7 @@ If you didn't expect this email, please contact our support team immediately.
 
   private generatePasswordResetEmailText(fullName: string, resetUrl: string): string {
     return `
-Password Reset Request - Ticketing System
+Password Reset Request - Sahra-Al-Aman Information Technology (SAAIT)
 
 Hello ${fullName},
 
@@ -668,7 +720,7 @@ If you did not request a password reset, please ignore this email. Your password
 If you have any questions or need assistance, please contact our support team.
 
 Best regards,
-Ticketing System Team
+Sahra-Al-Aman Information Technology (SAAIT) Team
 
 ---
 This is an automated message. Please do not reply to this email.
@@ -705,11 +757,12 @@ This password reset link will expire in 1 hour for security reasons.
       );
 
       await this.transporter.sendMail({
-        from: process.env.SMTP_FROM || '"Ticketing System" <noreply@example.com>',
+        from: process.env.SMTP_FROM || '"Sahra-Al-Aman Information Technology (SAAIT)" <noreply@example.com>',
         to: assignedToEmail,
         subject: subject,
         text: textContent,
         html: htmlContent,
+        attachments: this.getLogoAttachment(),
       });
 
       console.log(`Ticket creation email sent successfully to ${assignedToEmail}`);
@@ -731,7 +784,7 @@ This password reset link will expire in 1 hour for security reasons.
       <head>
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>New Ticket Assigned - Ticketing System</title>
+        <title>New Ticket Assigned - Sahra-Al-Aman Information Technology (SAAIT)</title>
       </head>
       <body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Helvetica Neue', Arial, sans-serif; background: linear-gradient(135deg, #4c63d2 0%, #5a3d7a 100%); padding: 40px 20px;">
         <table cellpadding="0" cellspacing="0" border="0" width="100%" style="max-width: 640px; margin: 0 auto;">
@@ -749,9 +802,7 @@ This password reset link will expire in 1 hour for security reasons.
               <table cellpadding="0" cellspacing="0" border="0" width="100%">
                 <tr>
                   <td style="background: linear-gradient(135deg, #2563eb 0%, #1e40af 100%); padding: 48px 40px; text-align: center;">
-                    <div style="width: 64px; height: 64px; background-color: rgba(255,255,255,0.2); border-radius: 50%; margin: 0 auto 20px; line-height: 64px; font-size: 32px;">
-                      🎫
-                    </div>
+                    <img src="${this.getLogoUrl()}" alt="SAAIT Logo" style="width: 120px; height: auto; margin: 0 auto 20px; display: block; max-width: 120px;" />
                     <h1 style="margin: 0; color: #ffffff; font-size: 28px; font-weight: 700; letter-spacing: -0.5px;">New Ticket Assigned</h1>
                     <p style="margin: 12px 0 0 0; color: rgba(255,255,255,0.9); font-size: 16px; font-weight: 400;">A new ticket has been assigned to you</p>
                   </td>
@@ -810,7 +861,7 @@ This password reset link will expire in 1 hour for security reasons.
 
                     <p style="margin: 24px 0 0 0; color: #2d3748; font-size: 15px; line-height: 1.6;">
                       Best regards,<br>
-                      <span style="font-weight: 600; color: #1a202c;">Ticketing System Team</span>
+                      <span style="font-weight: 600; color: #1a202c;">Sahra-Al-Aman Information Technology (SAAIT) Team</span>
                     </p>
 
                   </td>
@@ -825,7 +876,7 @@ This password reset link will expire in 1 hour for security reasons.
                       This is an automated message. Please do not reply to this email.
                     </p>
                     <p style="margin: 0; color: #a0aec0; font-size: 11px; line-height: 1.5;">
-                      © ${new Date().getFullYear()} Ticketing System. All rights reserved.
+                      © ${new Date().getFullYear()} Sahra-Al-Aman Information Technology (SAAIT). All rights reserved.
                     </p>
                   </td>
                 </tr>
@@ -852,7 +903,7 @@ This password reset link will expire in 1 hour for security reasons.
     projectName: string
   ): string {
     return `
-New Ticket Assigned - Ticketing System
+New Ticket Assigned - Sahra-Al-Aman Information Technology (SAAIT)
 
 Hello ${assignedToName},
 
@@ -866,7 +917,7 @@ Ticket Details:
 If you have any questions about this ticket, please don't hesitate to reach out.
 
 Best regards,
-The Ticketing System Team
+The Sahra-Al-Aman Information Technology (SAAIT) Team
 
 ---
 This is an automated message. Please do not reply to this email.
