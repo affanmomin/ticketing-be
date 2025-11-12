@@ -70,7 +70,7 @@ export async function adminSignup(
  */
 export async function login(tx: PoolClient, email: string, password: string): Promise<LoginResult> {
   const { rows: users } = await tx.query(
-    'SELECT id, organization_id, user_type, full_name, email, password_hash FROM app_user WHERE email = $1 AND is_active = true',
+    'SELECT id, organization_id, user_type, full_name, email, password_hash, client_id FROM app_user WHERE email = $1 AND is_active = true',
     [email]
   );
 
@@ -81,15 +81,14 @@ export async function login(tx: PoolClient, email: string, password: string): Pr
   const passwordMatch = await bcrypt.compare(password, user.password_hash);
   if (!passwordMatch) throw unauthorized('Invalid credentials');
 
-  // For internal users, client_id must be null; for CLIENT users, fetch it
-  let clientId: string | null = null;
-  if (user.user_type === 'CLIENT') {
-    const { rows: clientRows } = await tx.query(
-      'SELECT id FROM client WHERE organization_id = $1 LIMIT 1',
-      [user.organization_id]
-    );
-    if (clientRows.length === 0) throw badRequest('Client user has no associated client');
-    clientId = clientRows[0].id;
+  // For CLIENT users, use their client_id from the user record
+  // For internal users (ADMIN/EMPLOYEE), client_id should be null
+  let clientId: string | null = user.client_id || null;
+  if (user.user_type === 'CLIENT' && !clientId) {
+    throw badRequest('Client user has no associated client');
+  }
+  if ((user.user_type === 'ADMIN' || user.user_type === 'EMPLOYEE') && clientId) {
+    throw badRequest('Internal user should not have a client_id');
   }
 
   return {
