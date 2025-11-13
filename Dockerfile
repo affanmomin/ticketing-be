@@ -27,6 +27,9 @@ RUN npm ci --omit=dev
 # Copy built files from builder stage
 COPY --from=builder /usr/src/app/dist ./dist
 
+# Copy OpenAPI specification file (required by Swagger plugin)
+COPY openapi.yaml ./
+
 # Copy logo file if it exists (for email service)
 # Note: This will fail if logo doesn't exist, but that's okay - email service handles missing logo gracefully
 COPY saait-logo.jpg* ./
