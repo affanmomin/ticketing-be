@@ -5,6 +5,8 @@
   "main": "index.js",
   "scripts": {
     "dev": "nodemon -e ts,json,env --exec ts-node --files -r dotenv/config src/index.ts",
+    "build": "tsc",
+    "start": "node -r dotenv/config dist/index.js",
     "test": "LOG_LEVEL=error node -r dotenv/config -r ts-node/register --test src/**/*.test.ts",
     "lint": "biome lint src",
     "db:up": "docker compose up -d db",
@@ -14,7 +16,7 @@
     "db:create-admin": "ts-node -r dotenv/config scripts/create-admin.ts",
     "db:populate-demo": "ts-node -r dotenv/config scripts/populate-demo-data.ts",
     "docker:build": "docker build --build-arg PORT=3000 -t code-companion-node-ts-template .",
-    "docker:run": "docker run -p  code-companion-node-ts-template",
+    "docker:run": "docker run -p 3000:3000 --env-file .env code-companion-node-ts-template",
     "test:routes": "ts-node -r dotenv/config scripts/test-all-routes.ts"
   },
   "keywords": [],
