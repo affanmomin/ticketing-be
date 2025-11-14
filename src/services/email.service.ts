@@ -47,9 +47,13 @@ class EmailService {
       try {
         // Try multiple possible paths (for both dev and production)
         const possiblePaths = [
-          join(__dirname, '../../saait-logo.jpg'), // From dist/services/
-          join(__dirname, '../saait-logo.jpg'),    // From src/services/ (dev)
-          join(process.cwd(), 'saait-logo.jpg'),   // From project root
+          join(__dirname, '../../saait-logo.png'), // From dist/services/
+          join(__dirname, '../saait-logo.png'),    // From src/services/ (dev)
+          join(process.cwd(), 'saait-logo.png'),   // From project root
+          // Fallback to JPG if PNG doesn't exist
+          join(__dirname, '../../saait-logo.jpg'),
+          join(__dirname, '../saait-logo.jpg'),
+          join(process.cwd(), 'saait-logo.jpg'),
         ];
 
         for (const logoPath of possiblePaths) {
@@ -74,7 +78,7 @@ class EmailService {
 
     // Return CID attachment
     return [{
-      filename: 'saait-logo.jpg',
+      filename: 'saait-logo.png',
       cid: 'logo',
       content: this.logoBuffer,
     }];

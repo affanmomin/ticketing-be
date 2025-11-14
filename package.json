@@ -15,6 +15,7 @@
     "db:init": "ts-node -r dotenv/config scripts/init-db.ts",
     "db:create-admin": "ts-node -r dotenv/config scripts/create-admin.ts",
     "db:populate-demo": "ts-node -r dotenv/config scripts/populate-demo-data.ts",
+    "test:email-template": "ts-node -r dotenv/config scripts/test-email-template.ts",
     "docker:build": "docker build --build-arg PORT=3000 -t code-companion-node-ts-template .",
     "docker:run": "docker run -p 3000:3000 --env-file .env code-companion-node-ts-template",
     "test:routes": "ts-node -r dotenv/config scripts/test-all-routes.ts"
@@ -30,6 +31,7 @@
     "dotenv": "^16.5.0",
     "node-test-junit-reporter": "^2.0.1",
     "nodemon": "^3.1.10",
+    "sharp": "^0.34.5",
     "supertest": "^7.1.0",
     "ts-node": "^10.9.2",
     "typescript": "^5.8.3"

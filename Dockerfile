@@ -32,6 +32,7 @@ COPY openapi.yaml ./
 
 # Copy logo file if it exists (for email service)
 # Note: This will fail if logo doesn't exist, but that's okay - email service handles missing logo gracefully
+COPY saait-logo.png* ./
 COPY saait-logo.jpg* ./
 
 EXPOSE ${PORT}
