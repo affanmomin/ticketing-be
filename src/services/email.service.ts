@@ -85,13 +85,6 @@ class EmailService {
   }
 
   constructor() {
-    // Debug: Log SMTP configuration (without password)
-    console.log('SMTP Configuration:');
-    console.log('- Host:', process.env.SMTP_HOST || 'localhost (default)');
-    console.log('- Port:', process.env.SMTP_PORT || '587 (default)');
-    console.log('- User:', process.env.SMTP_USER || 'not set');
-    console.log('- Pass:', process.env.SMTP_PASS ? '***set***' : 'not set');
-    console.log('- From:', process.env.SMTP_FROM || 'not set');
 
     this.transporter = nodemailer.createTransport({
       host: process.env.SMTP_HOST || 'localhost',
