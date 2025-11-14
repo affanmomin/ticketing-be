@@ -211,10 +211,13 @@ CREATE TABLE ticket_attachment (
   file_name    text NOT NULL,
   mime_type    text NOT NULL,
   file_size    bigint NOT NULL CHECK (file_size >= 0),
-  storage_url  text NOT NULL,
+  storage_url  text NULL,
+  file_data    bytea NULL,
   created_at   timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX ix_attach_ticket ON ticket_attachment(ticket_id);
+COMMENT ON COLUMN ticket_attachment.file_data IS 'Binary file data stored directly in the database';
+COMMENT ON COLUMN ticket_attachment.storage_url IS 'Optional external storage URL (deprecated, kept for backward compatibility)';
 
 -- Immutable audit trail
 CREATE TABLE ticket_event (

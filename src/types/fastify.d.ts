@@ -6,5 +6,7 @@ declare module 'fastify' {
   interface FastifyRequest {
     user?: AuthContext;
     db?: { tx: PoolClient };
+    isMultipart?: () => boolean;
+    parts?: () => AsyncIterableIterator<any>;
   }
 }
