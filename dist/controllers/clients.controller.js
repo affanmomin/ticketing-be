@@ -65,9 +65,12 @@ function createClientCtrl(req, reply) {
             var _a, _b, _c;
             return yield (0, clients_service_1.createClient)(client, req.user.organizationId, body.name, (_a = body.email) !== null && _a !== void 0 ? _a : null, (_b = body.phone) !== null && _b !== void 0 ? _b : null, (_c = body.address) !== null && _c !== void 0 ? _c : null);
         }));
-        // Send notification email if client has an email (outside transaction)
+        // Send notification email if client has an email (asynchronously, don't block response)
         if (result.email) {
-            yield email_service_1.emailService.sendClientNotificationEmail(result.name, result.email);
+            email_service_1.emailService.sendClientNotificationEmail(result.name, result.email).catch((error) => {
+                // Error is already logged in the email service, but we log here too for visibility
+                console.error(`Failed to send client notification email to ${result.email}:`, error);
+            });
         }
         return reply.code(201).send(result);
     });

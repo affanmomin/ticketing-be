@@ -143,8 +143,12 @@ function forgotPasswordCtrl(req, reply) {
             return yield (0, auth_service_1.requestPasswordReset)(dbClient, body.email);
         }));
         // Only send email if user exists (result is not null)
+        // Send asynchronously to avoid blocking the API response
         if (result) {
-            yield email_service_1.emailService.sendPasswordResetEmail(result.email, result.fullName, result.token);
+            email_service_1.emailService.sendPasswordResetEmail(result.email, result.fullName, result.token).catch((error) => {
+                // Error is already logged in the email service, but we log here too for visibility
+                console.error(`Failed to send password reset email to ${result.email}:`, error);
+            });
         }
         // Always return the same message to prevent email enumeration
         return reply.send({

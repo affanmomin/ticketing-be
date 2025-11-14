@@ -15,8 +15,8 @@ const attachments_schema_1 = require("../schemas/attachments.schema");
 function attachmentsRoutes(app) {
     return __awaiter(this, void 0, void 0, function* () {
         app.get('/tickets/:id/attachments', { schema: { params: attachments_schema_1.ListAttachmentsParams } }, attachments_controller_1.listAttachmentsCtrl);
-        app.post('/tickets/:id/attachments/presign', { schema: { params: attachments_schema_1.ListAttachmentsParams, body: attachments_schema_1.PresignAttachmentBody } }, attachments_controller_1.presignAttachmentCtrl);
-        app.post('/tickets/:id/attachments/confirm', { schema: { params: attachments_schema_1.ListAttachmentsParams, body: attachments_schema_1.ConfirmAttachmentBody } }, attachments_controller_1.confirmAttachmentCtrl);
+        app.post('/tickets/:id/attachments', { schema: { params: attachments_schema_1.ListAttachmentsParams } }, attachments_controller_1.uploadAttachmentCtrl);
+        app.get('/attachments/:id/download', { schema: { params: attachments_schema_1.AttachmentIdParams } }, attachments_controller_1.downloadAttachmentCtrl);
         app.delete('/attachments/:id', { schema: { params: attachments_schema_1.AttachmentIdParams } }, attachments_controller_1.deleteAttachmentCtrl);
     });
 }

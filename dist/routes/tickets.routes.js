@@ -17,7 +17,9 @@ function ticketsRoutes(app) {
     return __awaiter(this, void 0, void 0, function* () {
         app.get('/tickets', { schema: { querystring: tickets_schema_1.ListTicketsQuery } }, tickets_controller_1.listTicketsCtrl);
         app.get('/tickets/:id', { schema: { params: common_schema_1.IdParam } }, tickets_controller_1.getTicketCtrl);
-        app.post('/tickets', { schema: { body: tickets_schema_1.CreateTicketBody } }, tickets_controller_1.createTicketCtrl);
+        // POST /tickets supports both JSON and multipart/form-data
+        // Schema validation is handled in the controller for multipart requests
+        app.post('/tickets', tickets_controller_1.createTicketCtrl);
         app.post('/tickets/:id', { schema: { params: common_schema_1.IdParam, body: tickets_schema_1.UpdateTicketBody } }, tickets_controller_1.updateTicketCtrl);
         app.delete('/tickets/:id', { schema: { params: common_schema_1.IdParam } }, tickets_controller_1.deleteTicketCtrl);
     });

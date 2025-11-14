@@ -101,13 +101,16 @@ function createEmployeeCtrl(req, reply) {
             yield client.query('BEGIN');
             const result = yield (0, users_service_1.createEmployee)(client, req.user.organizationId, body.email, body.fullName, body.password);
             yield client.query('COMMIT');
-            // Send welcome email with login credentials
-            yield email_service_1.emailService.sendWelcomeEmail({
+            // Send welcome email with login credentials (asynchronously, don't block response)
+            email_service_1.emailService.sendWelcomeEmail({
                 id: result.id,
                 email: result.email,
                 name: result.fullName,
                 userType: result.userType,
                 password: body.password,
+            }).catch((error) => {
+                // Error is already logged in the email service, but we log here too for visibility
+                console.error(`Failed to send welcome email to ${result.email}:`, error);
             });
             return reply.code(201).send(result);
         }
@@ -138,13 +141,16 @@ function createClientUserCtrl(req, reply) {
             yield client.query('BEGIN');
             const result = yield (0, users_service_1.createClientUser)(client, req.user.organizationId, body.clientId, body.email, body.fullName, body.password);
             yield client.query('COMMIT');
-            // Send welcome email with login credentials
-            yield email_service_1.emailService.sendWelcomeEmail({
+            // Send welcome email with login credentials (asynchronously, don't block response)
+            email_service_1.emailService.sendWelcomeEmail({
                 id: result.id,
                 email: result.email,
                 name: result.fullName,
                 userType: result.userType,
                 password: body.password,
+            }).catch((error) => {
+                // Error is already logged in the email service, but we log here too for visibility
+                console.error(`Failed to send welcome email to ${result.email}:`, error);
             });
             return reply.code(201).send(result);
         }

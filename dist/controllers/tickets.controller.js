@@ -8,6 +8,13 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
         step((generator = generator.apply(thisArg, _arguments || [])).next());
     });
 };
+var __asyncValues = (this && this.__asyncValues) || function (o) {
+    if (!Symbol.asyncIterator) throw new TypeError("Symbol.asyncIterator is not defined.");
+    var m = o[Symbol.asyncIterator], i;
+    return m ? m.call(o) : (o = typeof __values === "function" ? __values(o) : o[Symbol.iterator](), i = {}, verb("next"), verb("throw"), verb("return"), i[Symbol.asyncIterator] = function () { return this; }, i);
+    function verb(n) { i[n] = o[n] && function (v) { return new Promise(function (resolve, reject) { v = o[n](v), settle(resolve, reject, v.done, v.value); }); }; }
+    function settle(resolve, reject, d, v) { Promise.resolve(v).then(function(v) { resolve({ value: v, done: d }); }, reject); }
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.listTicketsCtrl = listTicketsCtrl;
 exports.getTicketCtrl = getTicketCtrl;
@@ -15,6 +22,7 @@ exports.createTicketCtrl = createTicketCtrl;
 exports.updateTicketCtrl = updateTicketCtrl;
 exports.deleteTicketCtrl = deleteTicketCtrl;
 const tickets_service_1 = require("../services/tickets.service");
+const attachments_service_1 = require("../services/attachments.service");
 const tickets_schema_1 = require("../schemas/tickets.schema");
 const common_schema_1 = require("../schemas/common.schema");
 const errors_1 = require("../utils/errors");
@@ -57,17 +65,78 @@ function getTicketCtrl(req, reply) {
     });
 }
 /**
- * POST /tickets - Create ticket
+ * POST /tickets - Create ticket (with optional attachments)
  * Write operation - transaction required
+ * Supports both JSON and multipart/form-data
  */
 function createTicketCtrl(req, reply) {
     return __awaiter(this, void 0, void 0, function* () {
+        var _a, e_1, _b, _c;
         if (!req.user)
             throw (0, errors_1.unauthorized)('Authentication required');
-        const body = tickets_schema_1.CreateTicketBody.parse(req.body);
+        // Check if this is multipart/form-data (has files) or JSON
+        const contentType = req.headers['content-type'] || '';
+        const isMultipart = contentType.includes('multipart/form-data');
+        let ticketData;
+        const attachments = [];
+        if (isMultipart && req.parts) {
+            // Handle multipart/form-data
+            const parts = req.parts();
+            const formFields = {};
+            try {
+                for (var _d = true, parts_1 = __asyncValues(parts), parts_1_1; parts_1_1 = yield parts_1.next(), _a = parts_1_1.done, !_a; _d = true) {
+                    _c = parts_1_1.value;
+                    _d = false;
+                    const part = _c;
+                    if (part.type === 'file') {
+                        // Handle file attachment
+                        const fileData = yield part.toBuffer();
+                        attachments.push({
+                            fileName: part.filename || 'unnamed',
+                            mimeType: part.mimetype || 'application/octet-stream',
+                            data: fileData,
+                        });
+                    }
+                    else {
+                        // Handle form field
+                        formFields[part.fieldname] = part.value;
+                    }
+                }
+            }
+            catch (e_1_1) { e_1 = { error: e_1_1 }; }
+            finally {
+                try {
+                    if (!_d && !_a && (_b = parts_1.return)) yield _b.call(parts_1);
+                }
+                finally { if (e_1) throw e_1.error; }
+            }
+            // Validate and parse form fields
+            ticketData = tickets_schema_1.CreateTicketBody.parse({
+                projectId: formFields.projectId,
+                streamId: formFields.streamId,
+                subjectId: formFields.subjectId,
+                priorityId: formFields.priorityId,
+                statusId: formFields.statusId,
+                title: formFields.title,
+                descriptionMd: formFields.descriptionMd || undefined,
+                assignedToUserId: formFields.assignedToUserId || undefined,
+            });
+        }
+        else {
+            // Handle JSON body (backward compatible)
+            ticketData = tickets_schema_1.CreateTicketBody.parse(req.body);
+        }
         const ticket = yield (0, helpers_1.withTransaction)((client) => __awaiter(this, void 0, void 0, function* () {
             var _a, _b;
-            return yield (0, tickets_service_1.createTicket)(client, body.projectId, req.user.userId, body.streamId, body.subjectId, body.priorityId, body.statusId, body.title, (_a = body.descriptionMd) !== null && _a !== void 0 ? _a : null, (_b = body.assignedToUserId) !== null && _b !== void 0 ? _b : null);
+            // Create the ticket first
+            const createdTicket = yield (0, tickets_service_1.createTicket)(client, ticketData.projectId, req.user.userId, ticketData.streamId, ticketData.subjectId, ticketData.priorityId, ticketData.statusId, ticketData.title, (_a = ticketData.descriptionMd) !== null && _a !== void 0 ? _a : null, (_b = ticketData.assignedToUserId) !== null && _b !== void 0 ? _b : null);
+            // Upload attachments if any
+            const uploadedAttachments = [];
+            for (const attachment of attachments) {
+                const uploaded = yield (0, attachments_service_1.uploadAttachment)(client, createdTicket.id, req.user.userId, attachment.fileName, attachment.mimeType, attachment.data);
+                uploadedAttachments.push(uploaded);
+            }
+            return Object.assign(Object.assign({}, createdTicket), { attachments: uploadedAttachments });
         }));
         return reply.code(201).send(ticket);
     });
