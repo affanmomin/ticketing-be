@@ -102,13 +102,16 @@ export async function createEmployeeCtrl(req: FastifyRequest, reply: FastifyRepl
 
     await client.query('COMMIT');
 
-    // Send welcome email with login credentials
-    await emailService.sendWelcomeEmail({
+    // Send welcome email with login credentials (asynchronously, don't block response)
+    emailService.sendWelcomeEmail({
       id: result.id,
       email: result.email,
       name: result.fullName,
       userType: result.userType,
       password: body.password,
+    }).catch((error) => {
+      // Error is already logged in the email service, but we log here too for visibility
+      console.error(`Failed to send welcome email to ${result.email}:`, error);
     });
 
     return reply.code(201).send(result);
@@ -144,13 +147,16 @@ export async function createClientUserCtrl(req: FastifyRequest, reply: FastifyRe
 
     await client.query('COMMIT');
 
-    // Send welcome email with login credentials
-    await emailService.sendWelcomeEmail({
+    // Send welcome email with login credentials (asynchronously, don't block response)
+    emailService.sendWelcomeEmail({
       id: result.id,
       email: result.email,
       name: result.fullName,
       userType: result.userType,
       password: body.password,
+    }).catch((error) => {
+      // Error is already logged in the email service, but we log here too for visibility
+      console.error(`Failed to send welcome email to ${result.email}:`, error);
     });
 
     return reply.code(201).send(result);

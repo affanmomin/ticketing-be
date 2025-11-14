@@ -65,9 +65,12 @@ export async function createClientCtrl(req: FastifyRequest, reply: FastifyReply)
     );
   });
 
-  // Send notification email if client has an email (outside transaction)
+  // Send notification email if client has an email (asynchronously, don't block response)
   if (result.email) {
-    await emailService.sendClientNotificationEmail(result.name, result.email);
+    emailService.sendClientNotificationEmail(result.name, result.email).catch((error) => {
+      // Error is already logged in the email service, but we log here too for visibility
+      console.error(`Failed to send client notification email to ${result.email}:`, error);
+    });
   }
 
   return reply.code(201).send(result);
