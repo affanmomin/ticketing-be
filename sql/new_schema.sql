@@ -145,7 +145,7 @@ FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
 CREATE TABLE status (
   id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  name        text NOT NULL UNIQUE,        -- New/In Progress/Resolved/Closed
+  name        text NOT NULL UNIQUE,        -- New/In Progress/On Hold/Closed
   is_closed   boolean NOT NULL DEFAULT false,
   sequence    int NOT NULL DEFAULT 100,
   active      boolean NOT NULL DEFAULT true,
@@ -298,6 +298,6 @@ ON CONFLICT (name) DO NOTHING;
 INSERT INTO status (name, is_closed, sequence) VALUES
   ('New', false, 10),
   ('In Progress', false, 20),
-  ('Resolved', true, 90),
+  ('On Hold', false, 30),
   ('Closed', true, 100)
 ON CONFLICT (name) DO NOTHING;
