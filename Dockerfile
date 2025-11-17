@@ -36,7 +36,7 @@ COPY saait-logo.png* ./
 COPY saait-logo.jpg* ./
 
 EXPOSE ${PORT}
-# Note: If using .env file, ensure it's copied to the container or use --env-file flag
-# Alternatively, set environment variables directly on the container
-CMD [ "node", "-r", "dotenv/config", "dist/index.js" ]
+# In production, environment variables should be set directly on the container/host
+# If you need .env file support, ensure dotenv is in dependencies and uncomment the -r flag below
+CMD [ "node", "dist/index.js" ]
 
