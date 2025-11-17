@@ -117,6 +117,13 @@ class EmailService {
         user: smtpUser,
         pass: smtpPass,
       } : undefined,
+      // Connection timeout settings (in milliseconds)
+      connectionTimeout: parseInt(process.env.SMTP_CONNECTION_TIMEOUT || '10000', 10), // 10 seconds default
+      greetingTimeout: parseInt(process.env.SMTP_GREETING_TIMEOUT || '5000', 10), // 5 seconds default
+      socketTimeout: parseInt(process.env.SMTP_SOCKET_TIMEOUT || '10000', 10), // 10 seconds default
+      // Retry settings
+      maxConnections: 5,
+      maxMessages: 100,
     };
 
     // Add TLS options for production (helps with certificate validation)
@@ -983,7 +990,14 @@ This is an automated message. Please do not reply to this email.
 
   async testConnection(): Promise<boolean> {
     try {
-      await this.transporter.verify();
+      // Add timeout wrapper to prevent hanging
+      const timeoutMs = 15000; // 15 seconds max
+      const verifyPromise = this.transporter.verify();
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('Connection test timed out after 15 seconds')), timeoutMs);
+      });
+
+      await Promise.race([verifyPromise, timeoutPromise]);
       console.log('Email service connection verified successfully');
       return true;
     } catch (error) {
@@ -997,6 +1011,17 @@ This is an automated message. Please do not reply to this email.
       if (errorCommand) {
         console.error(`   Failed command: ${errorCommand}`);
       }
+
+      // Special handling for timeout errors (common on cloud platforms)
+      if (errorCode === 'ETIMEDOUT' || errorMessage.includes('timeout')) {
+        console.error('   ⚠️  Connection timeout detected. This often means:');
+        console.error('      1. Your hosting provider (Render) is blocking outbound SMTP connections');
+        console.error('      2. Gmail is blocking connections from your server IP');
+        console.error('      3. Network firewall is blocking port 587/465');
+        console.error('   💡 Solution: Use an API-based email service (SendGrid, Mailgun, AWS SES, Resend)');
+        console.error('      These services use HTTPS APIs instead of SMTP and work on all platforms.');
+      }
+
       // Log full error for debugging
       if (error instanceof Error && error.stack) {
         console.error('   Full error:', error.stack);

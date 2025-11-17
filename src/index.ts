@@ -20,15 +20,29 @@ async function connectDB() {
 async function verifyEmailService() {
   try {
     console.log('Verifying email service connection...');
-    const isConnected = await emailService.testConnection();
+    // Don't block server startup if email verification fails
+    // Run verification in background with timeout
+    const timeoutMs = 20000; // 20 seconds max
+    const verificationPromise = emailService.testConnection();
+    const timeoutPromise = new Promise<boolean>((resolve) => {
+      setTimeout(() => {
+        console.warn('⚠️  Email verification timed out. Server will start anyway.');
+        console.warn('   Emails may not work if SMTP is blocked by your hosting provider.');
+        resolve(false);
+      }, timeoutMs);
+    });
+
+    const isConnected = await Promise.race([verificationPromise, timeoutPromise]);
     if (isConnected) {
       console.log('✅ Email service connection verified successfully');
     } else {
       console.warn('⚠️  Email service connection verification failed. Emails may not send.');
+      console.warn('   The server will continue to run, but email functionality may be unavailable.');
     }
   } catch (err) {
     console.error('❌ Email service verification error:', err);
     console.warn('⚠️  Email service may not work correctly. Check SMTP configuration.');
+    console.warn('   Server will continue to run despite email verification failure.');
   }
 }
 
