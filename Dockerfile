@@ -36,5 +36,7 @@ COPY saait-logo.png* ./
 COPY saait-logo.jpg* ./
 
 EXPOSE ${PORT}
-CMD [ "node", "dist/index.js" ]
+# Note: If using .env file, ensure it's copied to the container or use --env-file flag
+# Alternatively, set environment variables directly on the container
+CMD [ "node", "-r", "dotenv/config", "dist/index.js" ]
 

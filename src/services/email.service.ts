@@ -85,16 +85,56 @@ class EmailService {
   }
 
   constructor() {
+    // Validate required environment variables
+    const smtpHost = process.env.SMTP_HOST;
+    const smtpPort = process.env.SMTP_PORT;
+    const smtpUser = process.env.SMTP_USER;
+    const smtpPass = process.env.SMTP_PASS;
 
-    this.transporter = nodemailer.createTransport({
-      host: process.env.SMTP_HOST || 'localhost',
-      port: parseInt(process.env.SMTP_PORT || '587'),
+    // Log configuration (without sensitive data)
+    console.log('📧 Email Service Configuration:');
+    console.log(`   Host: ${smtpHost || 'localhost (default)'}`);
+    console.log(`   Port: ${smtpPort || '587 (default)'}`);
+    console.log(`   Secure: ${process.env.SMTP_SECURE === 'true' ? 'true' : 'false'}`);
+    console.log(`   User: ${smtpUser ? `${smtpUser.substring(0, 3)}***` : 'not set'}`);
+    console.log(`   Password: ${smtpPass ? '***set***' : 'not set'}`);
+    console.log(`   From: ${process.env.SMTP_FROM || 'not set'}`);
+
+    // Warn if critical config is missing
+    if (!smtpHost || !smtpUser || !smtpPass) {
+      console.warn('⚠️  Warning: SMTP configuration may be incomplete. Email sending may fail.');
+      if (!smtpHost) console.warn('   Missing: SMTP_HOST');
+      if (!smtpUser) console.warn('   Missing: SMTP_USER');
+      if (!smtpPass) console.warn('   Missing: SMTP_PASS');
+    }
+
+    // Build transporter configuration
+    const transporterConfig: any = {
+      host: smtpHost || 'localhost',
+      port: parseInt(smtpPort || '587', 10),
       secure: process.env.SMTP_SECURE === 'true', // true for 465, false for other ports
-      auth: {
-        user: process.env.SMTP_USER,
-        pass: process.env.SMTP_PASS,
-      },
-    });
+      auth: smtpUser && smtpPass ? {
+        user: smtpUser,
+        pass: smtpPass,
+      } : undefined,
+    };
+
+    // Add TLS options for production (helps with certificate validation)
+    if (process.env.SMTP_SECURE === 'true' || parseInt(smtpPort || '587', 10) === 465) {
+      transporterConfig.tls = {
+        // Don't reject unauthorized certificates (useful for self-signed certs)
+        // Set to false only if you have certificate issues
+        rejectUnauthorized: process.env.SMTP_REJECT_UNAUTHORIZED !== 'false',
+      };
+    } else {
+      // For STARTTLS (port 587)
+      transporterConfig.requireTLS = process.env.SMTP_REQUIRE_TLS !== 'false';
+      transporterConfig.tls = {
+        rejectUnauthorized: process.env.SMTP_REJECT_UNAUTHORIZED !== 'false',
+      };
+    }
+
+    this.transporter = nodemailer.createTransport(transporterConfig);
   }
 
   /**
@@ -121,7 +161,12 @@ class EmailService {
 
       console.log(`Welcome email sent successfully to ${userData.email}`);
     } catch (error) {
-      console.error(`Failed to send welcome email to ${userData.email}:`, error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorStack = error instanceof Error ? error.stack : undefined;
+      console.error(`Failed to send welcome email to ${userData.email}:`, errorMessage);
+      if (errorStack) {
+        console.error('Error stack:', errorStack);
+      }
       // Don't throw error to avoid failing user creation if email fails
     }
   }
@@ -271,7 +316,12 @@ If you didn't expect this email, please contact our support team immediately.
 
       console.log(`Client notification email sent successfully to ${clientEmail}`);
     } catch (error) {
-      console.error(`Failed to send client notification email to ${clientEmail}:`, error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorStack = error instanceof Error ? error.stack : undefined;
+      console.error(`Failed to send client notification email to ${clientEmail}:`, errorMessage);
+      if (errorStack) {
+        console.error('Error stack:', errorStack);
+      }
       // Don't throw error to avoid failing client creation if email fails
     }
   }
@@ -545,7 +595,12 @@ If you didn't expect this email, please contact our support team immediately.
         console.log(`Password reset email sent successfully to ${email}`);
       }
     } catch (error) {
-      console.error(`Failed to send password reset email to ${email}:`, error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorStack = error instanceof Error ? error.stack : undefined;
+      console.error(`Failed to send password reset email to ${email}:`, errorMessage);
+      if (errorStack) {
+        console.error('Error stack:', errorStack);
+      }
       throw error;
     }
   }
@@ -764,7 +819,12 @@ This password reset link will expire in 1 hour for security reasons.
 
       console.log(`Ticket creation email sent successfully to ${assignedToEmail}`);
     } catch (error) {
-      console.error(`Failed to send ticket creation email to ${assignedToEmail}:`, error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorStack = error instanceof Error ? error.stack : undefined;
+      console.error(`Failed to send ticket creation email to ${assignedToEmail}:`, errorMessage);
+      if (errorStack) {
+        console.error('Error stack:', errorStack);
+      }
       // Don't throw error to avoid failing ticket creation if email fails
     }
   }
@@ -927,7 +987,20 @@ This is an automated message. Please do not reply to this email.
       console.log('Email service connection verified successfully');
       return true;
     } catch (error) {
-      console.error('Email service connection failed:', error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorCode = (error as any)?.code;
+      const errorCommand = (error as any)?.command;
+      console.error('Email service connection failed:', errorMessage);
+      if (errorCode) {
+        console.error(`   Error code: ${errorCode}`);
+      }
+      if (errorCommand) {
+        console.error(`   Failed command: ${errorCommand}`);
+      }
+      // Log full error for debugging
+      if (error instanceof Error && error.stack) {
+        console.error('   Full error:', error.stack);
+      }
       return false;
     }
   }
