@@ -4,7 +4,7 @@
  */
 
 import dotenv from 'dotenv';
-import nodemailer from 'nodemailer';
+import { Resend } from 'resend';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 
@@ -27,28 +27,16 @@ async function testEmailLogo() {
     process.exit(1);
   }
 
-  const transporter = nodemailer.createTransport({
-    host: process.env.SMTP_HOST || 'smtp.gmail.com',
-    port: parseInt(process.env.SMTP_PORT || '587'),
-    secure: process.env.SMTP_SECURE === 'true',
-    auth: {
-      user: process.env.SMTP_USER,
-      pass: process.env.SMTP_PASS,
-    },
-  });
-
-  // Test connection
-  console.log('1️⃣  Testing SMTP connection...');
-  try {
-    await transporter.verify();
-    console.log('✅ SMTP connection verified!\n');
-  } catch (error: any) {
-    console.error('❌ SMTP connection failed:', error.message);
+  const apiKey = process.env.RESEND_API_KEY;
+  if (!apiKey) {
+    console.error('❌ RESEND_API_KEY is not set. Please add it to your environment.');
     process.exit(1);
   }
 
+  const resend = new Resend(apiKey);
+
   // Send test email with logo
-  console.log('2️⃣  Sending test email with logo...');
+  console.log('📤 Sending test email with logo via Resend...');
   const htmlContent = `
     <!DOCTYPE html>
     <html>
@@ -117,23 +105,31 @@ async function testEmailLogo() {
   `;
 
   try {
-    const info = await transporter.sendMail({
-      from: process.env.SMTP_FROM || '"Sahra-Al-Aman Information Technology (SAAIT)" <noreply@example.com>',
+    const { data, error } = await resend.emails.send({
+      from: process.env.SMTP_FROM || '"Sahra-Al-Aman Information Technology (SAAIT)" <onboarding@resend.dev>',
       to: TEST_EMAIL,
       subject: 'Logo Test - Sahra-Al-Aman Information Technology (SAAIT)',
       html: htmlContent,
       text: `Logo Test Email\n\nThis is a test email to verify that the SAAIT logo displays correctly.\n\nThe logo should be visible in the HTML version of this email.\n\nBest regards,\nSahra-Al-Aman Information Technology (SAAIT) Team`,
       attachments: [{
         filename: 'saait-logo.jpg',
-        cid: 'logo',
         content: logoBuffer,
+        content_id: 'logo',
+        content_type: 'image/jpeg',
       }],
     });
 
+    if (error) {
+      console.error('❌ Failed to send email:', error.message);
+      process.exit(1);
+    }
+
     console.log('✅ Email sent successfully!');
-    console.log(`   Message ID: ${info.messageId}`);
+    if (data?.id) {
+      console.log(`   Message ID: ${data.id}`);
+    }
     console.log(`   To: ${TEST_EMAIL}`);
-    console.log(`   From: ${process.env.SMTP_FROM || 'noreply@example.com'}`);
+    console.log(`   From: ${process.env.SMTP_FROM || 'onboarding@resend.dev'}`);
     console.log('\n📬 Check your inbox at affanmomin14@gmail.com');
     console.log('   (Also check spam/junk folder if not in inbox)');
     console.log('\n💡 The logo should be visible in both the header and footer of the email.');

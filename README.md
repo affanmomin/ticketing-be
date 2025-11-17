@@ -199,7 +199,13 @@ S3_REGION=us-east-1
 S3_BUCKET=attachments
 S3_ACCESS_KEY_ID=your_key
 S3_SECRET_ACCESS_KEY=your_secret
+
+# Email (Resend)
+RESEND_API_KEY=your_resend_api_key
+SMTP_FROM="Sahra-Al-Aman Information Technology (SAAIT)" <noreply@example.com>
 ```
+
+> **Note:** When using Resend, you can leave `SMTP_FROM` unset to fall back to `onboarding@resend.dev`, or verify your own domain at [resend.com/domains](https://resend.com/domains) and set a custom sender address.
 
 ## Authentication
 

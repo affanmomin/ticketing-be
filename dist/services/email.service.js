@@ -8,94 +8,80 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
         step((generator = generator.apply(thisArg, _arguments || [])).next());
     });
 };
-var __importDefault = (this && this.__importDefault) || function (mod) {
-    return (mod && mod.__esModule) ? mod : { "default": mod };
-};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.emailService = void 0;
-const nodemailer_1 = __importDefault(require("nodemailer"));
-const fs_1 = require("fs");
-const path_1 = require("path");
+const resend_1 = require("resend");
 const credentials_1 = require("../utils/credentials");
 class EmailService {
-    /**
-     * Get logo URL for emails
-     * Uses LOGO_URL env var if set, otherwise uses CID attachment (cid:logo)
-     */
-    getLogoUrl() {
-        // If LOGO_URL is set in env, use it (preferred for production)
-        if (process.env.LOGO_URL) {
-            return process.env.LOGO_URL;
-        }
-        // Otherwise, use CID attachment (most reliable for email clients)
-        return 'cid:logo';
-    }
-    /**
-     * Get logo attachment for CID embedding
-     * Returns undefined if LOGO_URL is set (no attachment needed)
-     */
-    getLogoAttachment() {
-        // If LOGO_URL is set, no attachment needed
-        if (process.env.LOGO_URL) {
-            return undefined;
-        }
-        // Load logo buffer if not already loaded
-        if (!this.logoBuffer) {
-            try {
-                // Try multiple possible paths (for both dev and production)
-                const possiblePaths = [
-                    (0, path_1.join)(__dirname, '../../saait-logo.png'), // From dist/services/
-                    (0, path_1.join)(__dirname, '../saait-logo.png'), // From src/services/ (dev)
-                    (0, path_1.join)(process.cwd(), 'saait-logo.png'), // From project root
-                    // Fallback to JPG if PNG doesn't exist
-                    (0, path_1.join)(__dirname, '../../saait-logo.jpg'),
-                    (0, path_1.join)(__dirname, '../saait-logo.jpg'),
-                    (0, path_1.join)(process.cwd(), 'saait-logo.jpg'),
-                ];
-                for (const logoPath of possiblePaths) {
-                    try {
-                        this.logoBuffer = (0, fs_1.readFileSync)(logoPath);
-                        break;
-                    }
-                    catch (_a) {
-                        // Try next path
-                        continue;
-                    }
-                }
-                if (!this.logoBuffer) {
-                    console.warn('Logo file not found, emails will be sent without logo');
-                    return undefined;
-                }
-            }
-            catch (error) {
-                console.warn('Logo file not found, using placeholder:', error instanceof Error ? error.message : String(error));
-                return undefined;
-            }
-        }
-        // Return CID attachment
-        return [{
-                filename: 'saait-logo.png',
-                cid: 'logo',
-                content: this.logoBuffer,
-            }];
-    }
     constructor() {
-        this.logoBuffer = null;
-        // Debug: Log SMTP configuration (without password)
-        console.log('SMTP Configuration:');
-        console.log('- Host:', process.env.SMTP_HOST || 'localhost (default)');
-        console.log('- Port:', process.env.SMTP_PORT || '587 (default)');
-        console.log('- User:', process.env.SMTP_USER || 'not set');
-        console.log('- Pass:', process.env.SMTP_PASS ? '***set***' : 'not set');
-        console.log('- From:', process.env.SMTP_FROM || 'not set');
-        this.transporter = nodemailer_1.default.createTransport({
-            host: process.env.SMTP_HOST || 'localhost',
-            port: parseInt(process.env.SMTP_PORT || '587'),
-            secure: process.env.SMTP_SECURE === 'true', // true for 465, false for other ports
-            auth: {
-                user: process.env.SMTP_USER,
-                pass: process.env.SMTP_PASS,
-            },
+        this.resend = null;
+        this.fromAddress = process.env.SMTP_FROM || '"Sahra-Al-Aman Information Technology (SAAIT)" <onboarding@resend.dev>';
+        const apiKey = process.env.RESEND_API_KEY;
+        console.log('📧 Email Service Configuration:');
+        console.log(`   Provider: Resend`);
+        console.log(`   From: ${this.fromAddress}`);
+        console.log(`   LOGO_URL: ${process.env.LOGO_URL ? 'set' : 'not set (using inline logo if available)'}`);
+        if (!apiKey) {
+            console.warn('⚠️  RESEND_API_KEY is not set. Email sending is disabled.');
+            return;
+        }
+        this.resend = new resend_1.Resend(apiKey);
+        console.log('📧 Resend client initialized successfully.');
+    }
+    renderEmailTemplate(title, contentHtml, options = {}) {
+        const { preheader, accentColor = '#1d4ed8' } = options;
+        const year = new Date().getFullYear();
+        return `
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>${title}</title>
+  </head>
+  <body style="margin:0;padding:24px;background-color:#f7f8fa;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#0f172a;">
+    ${preheader ? `<span style="display:none !important; font-size:1px; color:#f7f8fa; line-height:1px;">${preheader}</span>` : ''}
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;margin:0 auto;background-color:#ffffff;border-radius:14px;border:1px solid #e2e8f0;padding:32px;box-sizing:border-box;box-shadow:0 10px 35px rgba(15,23,42,0.05);">
+      <tr>
+        <td>
+          <div style="text-align:center;margin-bottom:24px;">
+            <div style="display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:6px 14px;border-radius:999px;font-size:12px;font-weight:600;color:#ffffff;background:${accentColor};">
+              Sahra-Al-Aman IT
+            </div>
+            <h1 style="margin:16px 0 8px;font-size:22px;color:#0f172a;">${title}</h1>
+            ${preheader ? `<p style="margin:0;color:#475467;font-size:14px;">${preheader}</p>` : ''}
+          </div>
+          ${contentHtml}
+          <p style="margin-top:32px;font-size:13px;color:#94a3b8;border-top:1px solid #e2e8f0;padding-top:18px;">
+            This is an automated message from Sahra-Al-Aman Information Technology (SAAIT). Please do not reply directly to this email.
+          </p>
+          <p style="margin:0;font-size:12px;color:#cbd5f5;">© ${year} Sahra-Al-Aman Information Technology</p>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>
+    `.trim();
+    }
+    sendEmail(to, subject, html, text) {
+        return __awaiter(this, void 0, void 0, function* () {
+            if (!this.resend) {
+                console.warn(`Email service not configured. Unable to send email to ${to}`);
+                return;
+            }
+            const { data, error } = yield this.resend.emails.send({
+                from: this.fromAddress,
+                to,
+                subject,
+                html,
+                text,
+            });
+            if (error) {
+                throw new Error(error.message);
+            }
+            if (data === null || data === void 0 ? void 0 : data.id) {
+                console.log(`Email queued successfully (id: ${data.id}) to ${to}`);
+            }
         });
     }
     /**
@@ -110,18 +96,16 @@ class EmailService {
                     : 'Welcome to Sahra-Al-Aman Information Technology (SAAIT) - Your Account Has Been Created';
                 const htmlContent = this.generateWelcomeEmailHtml(userData, isClient);
                 const textContent = this.generateWelcomeEmailText(userData, isClient);
-                yield this.transporter.sendMail({
-                    from: process.env.SMTP_FROM || '"Sahra-Al-Aman Information Technology (SAAIT)" <noreply@example.com>',
-                    to: userData.email,
-                    subject: subject,
-                    text: textContent,
-                    html: htmlContent,
-                    attachments: this.getLogoAttachment(),
-                });
+                yield this.sendEmail(userData.email, subject, htmlContent, textContent);
                 console.log(`Welcome email sent successfully to ${userData.email}`);
             }
             catch (error) {
-                console.error(`Failed to send welcome email to ${userData.email}:`, error);
+                const errorMessage = error instanceof Error ? error.message : String(error);
+                const errorStack = error instanceof Error ? error.stack : undefined;
+                console.error(`Failed to send welcome email to ${userData.email}:`, errorMessage);
+                if (errorStack) {
+                    console.error('Error stack:', errorStack);
+                }
                 // Don't throw error to avoid failing user creation if email fails
             }
         });
@@ -134,112 +118,24 @@ class EmailService {
             try {
                 const baseUrl = process.env.APP_BASE_URL || 'http://localhost:5173';
                 const loginUrl = `${baseUrl}/login`;
-                const htmlContent = `
-        <!DOCTYPE html>
-        <html>
-        <head>
-          <meta charset="utf-8">
-          <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          <title>Client Account Created - Sahra-Al-Aman Information Technology (SAAIT)</title>
-        </head>
-        <body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Helvetica Neue', Arial, sans-serif; background: linear-gradient(135deg, #4c63d2 0%, #5a3d7a 100%); padding: 40px 20px;">
-          <table cellpadding="0" cellspacing="0" border="0" width="100%" style="max-width: 640px; margin: 0 auto;">
-
-            <!-- Spacer -->
-            <tr>
-              <td style="height: 20px;"></td>
-            </tr>
-
-            <!-- Main Card -->
-            <tr>
-              <td style="background-color: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 20px 60px rgba(0,0,0,0.15);">
-
-                <!-- Header with Gradient -->
-                <table cellpadding="0" cellspacing="0" border="0" width="100%">
-                  <tr>
-                    <td style="background: linear-gradient(135deg, #2563eb 0%, #1e40af 100%); padding: 48px 40px; text-align: center;">
-                      <img src="${this.getLogoUrl()}" alt="SAAIT Logo" style="width: 120px; height: auto; margin: 0 auto 20px; display: block; max-width: 120px;" />
-                      <h1 style="margin: 0; color: #ffffff; font-size: 28px; font-weight: 700; letter-spacing: -0.5px;">Account Created</h1>
-                      <p style="margin: 12px 0 0 0; color: rgba(255,255,255,0.9); font-size: 16px; font-weight: 400;">Welcome to Sahra-Al-Aman Information Technology (SAAIT)</p>
-                    </td>
-                  </tr>
-                </table>
-
-                <!-- Content -->
-                <table cellpadding="0" cellspacing="0" border="0" width="100%">
-                  <tr>
-                    <td style="padding: 48px 40px;">
-
-                      <p style="margin: 0 0 24px 0; color: #2d3748; font-size: 16px; line-height: 1.7; font-weight: 400;">
-                        Hello <strong style="color: #1a202c; font-weight: 600;">${clientName}</strong>,
-                      </p>
-
-                      <p style="margin: 0 0 32px 0; color: #4a5568; font-size: 15px; line-height: 1.7;">
-                        Your client account has been successfully created in Sahra-Al-Aman Information Technology (SAAIT) ticketing system. You can now access the system to manage your tickets and collaborate with our team.
-                      </p>
-
-                      <!-- Info Card -->
-                      <table cellpadding="0" cellspacing="0" border="0" width="100%" style="margin: 0 0 32px 0; background-color: #f7fafc; border-radius: 8px; border: 1px solid #e2e8f0;">
-                        <tr>
-                          <td style="padding: 20px;">
-                            <p style="margin: 0 0 12px 0; color: #718096; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px;">
-                              What's Next?
-                            </p>
-                            <p style="margin: 0; color: #4a5568; font-size: 14px; line-height: 1.6;">
-                              Your account administrator will create user accounts for your team members. Once created, you'll receive login credentials via email.
-                            </p>
-                          </td>
-                        </tr>
-                      </table>
-
-                      <!-- Divider -->
-                      <table cellpadding="0" cellspacing="0" border="0" width="100%" style="margin: 32px 0;">
-                        <tr>
-                          <td style="height: 1px; background-color: #e2e8f0;"></td>
-                        </tr>
-                      </table>
-
-                      <!-- Support -->
-                      <p style="margin: 0 0 8px 0; color: #4a5568; font-size: 15px; line-height: 1.6;">
-                        If you have any questions or need assistance, please don't hesitate to contact our support team.
-                      </p>
-
-                      <p style="margin: 24px 0 0 0; color: #2d3748; font-size: 15px; line-height: 1.6;">
-                        Best regards,<br>
-                        <span style="font-weight: 600; color: #1a202c;">Sahra-Al-Aman Information Technology (SAAIT) Team</span>
-                      </p>
-
-                    </td>
-                  </tr>
-                </table>
-
-                <!-- Footer -->
-                <table cellpadding="0" cellspacing="0" border="0" width="100%" style="background-color: #f7fafc; border-top: 1px solid #e2e8f0;">
-                  <tr>
-                    <td style="padding: 32px 40px; text-align: center;">
-                      <img src="${this.getLogoUrl()}" alt="SAAIT Logo" style="width: 80px; height: auto; margin: 0 auto 16px; display: block; max-width: 80px; opacity: 0.7;" />
-                      <p style="margin: 0 0 8px 0; color: #718096; font-size: 12px; line-height: 1.5;">
-                        This is an automated message. Please do not reply to this email.
-                      </p>
-                      <p style="margin: 0; color: #a0aec0; font-size: 11px; line-height: 1.5;">
-                        © ${new Date().getFullYear()} Sahra-Al-Aman Information Technology (SAAIT). All rights reserved.
-                      </p>
-                    </td>
-                  </tr>
-                </table>
-
-              </td>
-            </tr>
-
-            <!-- Spacer -->
-            <tr>
-              <td style="height: 20px;"></td>
-            </tr>
-
-          </table>
-        </body>
-        </html>
-      `;
+                const htmlContent = this.renderEmailTemplate('Your client account is ready', `
+          <p style="margin:0 0 16px;font-size:15px;">Hi ${clientName},</p>
+          <p style="margin:0 0 16px;color:#475467;">
+            Your organization can now raise requests, monitor SLA progress, and collaborate with the SAAIT delivery team in one place.
+          </p>
+          <div style="margin:0 0 18px;padding:16px;border:1px solid #e2e8f0;border-radius:10px;background-color:#f8fafc;">
+            <p style="margin:0 0 8px;font-weight:600;color:#0f172a;">Quick actions</p>
+            <ol style="margin:0;padding-left:18px;color:#475467;font-size:13px;line-height:1.6;">
+              <li>Share the login link with key stakeholders: <span style="color:#2563eb;">${loginUrl}</span></li>
+              <li>Let us know which teammates need accounts.</li>
+              <li>Start submitting tickets—our engineers will keep you posted.</li>
+            </ol>
+          </div>
+          <p style="margin:0;color:#475467;">Need assistance? Just reply to this email or reach your SAAIT account manager.</p>
+        `, {
+                    preheader: 'Your organization now has access to the SAAIT ticketing workspace.',
+                    accentColor: '#2563eb',
+                });
                 const textContent = `
 Client Account Created
 
@@ -258,18 +154,16 @@ The Sahra-Al-Aman Information Technology (SAAIT) Team
 This is an automated message. Please do not reply to this email.
 If you didn't expect this email, please contact our support team immediately.
       `.trim();
-                yield this.transporter.sendMail({
-                    from: process.env.SMTP_FROM || '"Sahra-Al-Aman Information Technology (SAAIT)" <noreply@example.com>',
-                    to: clientEmail,
-                    subject: 'Client Account Created - Sahra-Al-Aman Information Technology (SAAIT)',
-                    text: textContent,
-                    html: htmlContent,
-                    attachments: this.getLogoAttachment(),
-                });
+                yield this.sendEmail(clientEmail, 'Client Account Created - Sahra-Al-Aman Information Technology (SAAIT)', htmlContent, textContent);
                 console.log(`Client notification email sent successfully to ${clientEmail}`);
             }
             catch (error) {
-                console.error(`Failed to send client notification email to ${clientEmail}:`, error);
+                const errorMessage = error instanceof Error ? error.message : String(error);
+                const errorStack = error instanceof Error ? error.stack : undefined;
+                console.error(`Failed to send client notification email to ${clientEmail}:`, errorMessage);
+                if (errorStack) {
+                    console.error('Error stack:', errorStack);
+                }
                 // Don't throw error to avoid failing client creation if email fails
             }
         });
@@ -279,178 +173,59 @@ If you didn't expect this email, please contact our support team immediately.
      */
     generateWelcomeEmailHtml(userData, isClient = false) {
         const baseUrl = process.env.APP_BASE_URL || 'http://localhost:5173';
-        // Create login URL with encoded credentials if password is provided
         let loginUrl = `${baseUrl}/login`;
         if (userData.password) {
             const encodedCreds = (0, credentials_1.encodeCredentials)(userData.email, userData.password);
             loginUrl = `${baseUrl}/login?creds=${encodeURIComponent(encodedCreds)}`;
         }
-        const roleColors = {
-            ADMIN: { bg: 'linear-gradient(135deg, #dc2626 0%, #991b1b 100%)', icon: '👑' },
-            EMPLOYEE: { bg: 'linear-gradient(135deg, #059669 0%, #047857 100%)', icon: '👨‍💼' },
-            CLIENT: { bg: 'linear-gradient(135deg, #2563eb 0%, #1e40af 100%)', icon: '🏢' },
+        const roleAccents = {
+            ADMIN: '#ea580c',
+            EMPLOYEE: '#0ea5e9',
+            CLIENT: '#6366f1',
         };
-        const roleInfo = roleColors[userData.userType] || {
-            bg: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-            icon: '👤',
-        };
-        return `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <meta charset="utf-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Welcome to Sahra-Al-Aman Information Technology (SAAIT)</title>
-      </head>
-      <body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Helvetica Neue', Arial, sans-serif; background: linear-gradient(135deg, #4c63d2 0%, #5a3d7a 100%); padding: 40px 20px;">
-        <table cellpadding="0" cellspacing="0" border="0" width="100%" style="max-width: 640px; margin: 0 auto;">
-
-          <!-- Spacer -->
-          <tr>
-            <td style="height: 20px;"></td>
-          </tr>
-
-          <!-- Main Card -->
-          <tr>
-            <td style="background-color: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 20px 60px rgba(0,0,0,0.15);">
-
-              <!-- Header with Gradient -->
-              <table cellpadding="0" cellspacing="0" border="0" width="100%">
-                <tr>
-                  <td style="background: ${roleInfo.bg}; padding: 48px 40px; text-align: center;">
-                    <img src="${this.getLogoUrl()}" alt="SAAIT Logo" style="width: 120px; height: auto; margin: 0 auto 20px; display: block; max-width: 120px;" />
-                    <h1 style="margin: 0; color: #ffffff; font-size: 28px; font-weight: 700; letter-spacing: -0.5px;">Welcome Aboard!</h1>
-                    <p style="margin: 12px 0 0 0; color: rgba(255,255,255,0.9); font-size: 16px; font-weight: 400;">Your account has been created</p>
-                  </td>
-                </tr>
-              </table>
-
-              <!-- Content -->
-              <table cellpadding="0" cellspacing="0" border="0" width="100%">
-                <tr>
-                  <td style="padding: 48px 40px;">
-
-                    <p style="margin: 0 0 24px 0; color: #2d3748; font-size: 16px; line-height: 1.7; font-weight: 400;">
-                      Hello <strong style="color: #1a202c; font-weight: 600;">${userData.name}</strong>,
-                    </p>
-
-                    <p style="margin: 0 0 32px 0; color: #4a5568; font-size: 15px; line-height: 1.7;">
-                      Your <strong style="color: #2d3748;">${userData.userType}</strong> account has been successfully created${isClient ? ' for your organization' : ''}. You're all set to start managing tickets efficiently!
-                    </p>
-
-                    <!-- Account Details Card -->
-                    <table cellpadding="0" cellspacing="0" border="0" width="100%" style="margin: 0 0 32px 0; background-color: #f7fafc; border-radius: 8px; border: 1px solid #e2e8f0;">
-                      <tr>
-                        <td style="padding: 24px;">
-                          <p style="margin: 0 0 16px 0; color: #718096; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px;">
-                            Account Details
-                          </p>
-                          <table cellpadding="0" cellspacing="0" border="0" width="100%">
-                            <tr>
-                              <td style="padding: 8px 0; color: #4a5568; font-size: 14px; font-weight: 500;">Email:</td>
-                              <td style="padding: 8px 0; color: #2d3748; font-size: 14px; font-weight: 600; text-align: right;">${userData.email}</td>
+        const accent = roleAccents[userData.userType] || '#2563eb';
+        const detailRows = `
+      <tr>
+        <td style="font-size:13px;color:#64748b;">Email</td>
+        <td style="font-size:13px;font-weight:600;color:#0f172a;text-align:right;">${userData.email}</td>
                             </tr>
                             <tr>
-                              <td style="padding: 8px 0; color: #4a5568; font-size: 14px; font-weight: 500;">Role:</td>
-                              <td style="padding: 8px 0; text-align: right;">
-                                <span style="display: inline-block; padding: 4px 12px; background: ${roleInfo.bg}; color: #ffffff; border-radius: 12px; font-size: 12px; font-weight: 600;">${userData.userType}</span>
-                              </td>
+        <td style="font-size:13px;color:#64748b;">Role</td>
+        <td style="font-size:13px;font-weight:600;color:#0f172a;text-align:right;">${userData.userType}</td>
                             </tr>
                             ${userData.password ? `
                             <tr>
-                              <td style="padding: 8px 0; color: #4a5568; font-size: 14px; font-weight: 500;">Password:</td>
-                              <td style="padding: 8px 0; color: #2d3748; font-size: 14px; font-weight: 600; text-align: right; font-family: 'Courier New', monospace;">${userData.password}</td>
-                            </tr>
-                            ` : ''}
-                          </table>
-                        </td>
-                      </tr>
-                    </table>
-
-                    ${userData.password ? `
-                    <!-- Auto-Login Notice -->
-                    <table cellpadding="0" cellspacing="0" border="0" width="100%" style="margin: 0 0 32px 0; background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%); border-radius: 8px; border-left: 4px solid #10b981;">
-                      <tr>
-                        <td style="padding: 20px;">
-                          <p style="margin: 0; color: #065f46; font-size: 14px; line-height: 1.6; font-weight: 500;">
-                            <strong style="font-weight: 600;">✨ Quick Login:</strong> Click the button below and your credentials will be automatically filled in. No typing required!
-                          </p>
-                        </td>
-                      </tr>
-                    </table>
-                    ` : ''}
-
-                    <!-- CTA Button -->
-                    <table cellpadding="0" cellspacing="0" border="0" width="100%" style="margin: 0 0 32px 0;">
-                      <tr>
-                        <td align="center">
-                          <a href="${loginUrl}" style="display: inline-block; background: ${roleInfo.bg}; color: #ffffff; text-decoration: none; padding: 16px 48px; font-size: 16px; font-weight: 600; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.15);">
-                            ${userData.password ? '🚀 Login with Auto-Fill' : '🔑 Access System'}
-                          </a>
-                        </td>
-                      </tr>
-                    </table>
-
-                    ${userData.password ? `
-                    <!-- Security Note -->
-                    <table cellpadding="0" cellspacing="0" border="0" width="100%" style="margin: 0 0 32px 0; background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%); border-radius: 8px; border-left: 4px solid #f59e0b;">
-                      <tr>
-                        <td style="padding: 20px;">
-                          <p style="margin: 0; color: #92400e; font-size: 14px; line-height: 1.6; font-weight: 500;">
-                            <strong style="font-weight: 600;">🔒 Security Recommendation:</strong> Please change your password after your first login for enhanced security.
-                          </p>
-                        </td>
-                      </tr>
-                    </table>
-                    ` : ''}
-
-                    <!-- Divider -->
-                    <table cellpadding="0" cellspacing="0" border="0" width="100%" style="margin: 32px 0;">
-                      <tr>
-                        <td style="height: 1px; background-color: #e2e8f0;"></td>
-                      </tr>
-                    </table>
-
-                    <!-- Support -->
-                    <p style="margin: 0 0 8px 0; color: #4a5568; font-size: 15px; line-height: 1.6;">
-                      Need help? Our support team is here for you.
-                    </p>
-
-                    <p style="margin: 24px 0 0 0; color: #2d3748; font-size: 15px; line-height: 1.6;">
-                      Best regards,<br>
-                      <span style="font-weight: 600; color: #1a202c;">Sahra-Al-Aman Information Technology (SAAIT) Team</span>
-                    </p>
-
-                  </td>
-                </tr>
-              </table>
-
-              <!-- Footer -->
-              <table cellpadding="0" cellspacing="0" border="0" width="100%" style="background-color: #f7fafc; border-top: 1px solid #e2e8f0;">
-                <tr>
-                  <td style="padding: 32px 40px; text-align: center;">
-                    <p style="margin: 0 0 8px 0; color: #718096; font-size: 12px; line-height: 1.5;">
-                      This is an automated message. Please do not reply to this email.
-                    </p>
-                    <p style="margin: 0; color: #a0aec0; font-size: 11px; line-height: 1.5;">
-                      © ${new Date().getFullYear()} Sahra-Al-Aman Information Technology (SAAIT). All rights reserved.
-                    </p>
-                  </td>
-                </tr>
-              </table>
-
-            </td>
-          </tr>
-
-          <!-- Spacer -->
-          <tr>
-            <td style="height: 20px;"></td>
-          </tr>
-
-        </table>
-      </body>
-      </html>
+        <td style="font-size:13px;color:#64748b;">Temporary password</td>
+        <td style="font-size:13px;font-weight:600;color:#0f172a;text-align:right;">${userData.password}</td>
+      </tr>` : ''}
     `;
+        const content = `
+      <p style="margin:0 0 16px;font-size:15px;color:#0f172a;">
+        Hi <strong>${userData.name}</strong>, your ${userData.userType.toLowerCase()} workspace${isClient ? ' for your organization' : ''} is ready to go.
+      </p>
+      <div style="margin:0 0 20px;padding:18px;border:1px solid #e2e8f0;border-radius:10px;background:linear-gradient(135deg,rgba(37,99,235,0.04),rgba(14,165,233,0.05));">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+          ${detailRows}
+        </table>
+      </div>
+      <p style="margin:0 0 20px;">
+        <a href="${loginUrl}" style="display:inline-block;padding:12px 26px;background:${accent};color:#ffffff;text-decoration:none;border-radius:8px;font-weight:600;">
+          Open ticketing workspace
+        </a>
+      </p>
+      <div style="margin:0 0 16px;padding:14px 16px;border-radius:10px;background-color:#f8fafc;color:#0f172a;font-size:13px;line-height:1.5;">
+        <strong style="display:block;margin-bottom:6px;">Tips:</strong>
+        <ul style="margin:0;padding-left:18px; color:#475467;">
+          <li>Bookmark the login link for quick access.</li>
+          ${userData.password ? '<li>Change your temporary password after signing in.</li>' : '<li>Use your existing credentials to sign in.</li>'}
+          <li>Update ticket statuses as work progresses.</li>
+        </ul>
+      </div>
+    `;
+        return this.renderEmailTemplate('Welcome to SAAIT', content, {
+            preheader: `Your ${userData.userType.toLowerCase()} account is ready.`,
+            accentColor: accent,
+        });
     }
     /**
      * Generate plain text content for welcome email
@@ -509,14 +284,7 @@ If you didn't expect this email, please contact our support team immediately.
                 // For testing: send to test email if specified, otherwise use actual email
                 const recipientEmail = process.env.TEST_EMAIL || email;
                 const actualEmail = recipientEmail !== email ? email : null;
-                yield this.transporter.sendMail({
-                    from: process.env.SMTP_FROM || '"Sahra-Al-Aman Information Technology (SAAIT)" <noreply@example.com>',
-                    to: recipientEmail,
-                    subject: subject,
-                    text: textContent,
-                    html: htmlContent,
-                    attachments: this.getLogoAttachment(),
-                });
+                yield this.sendEmail(recipientEmail, subject, htmlContent, textContent);
                 if (actualEmail) {
                     console.log(`Password reset email sent to ${recipientEmail} (test mode - actual email: ${actualEmail})`);
                 }
@@ -525,161 +293,39 @@ If you didn't expect this email, please contact our support team immediately.
                 }
             }
             catch (error) {
-                console.error(`Failed to send password reset email to ${email}:`, error);
+                const errorMessage = error instanceof Error ? error.message : String(error);
+                const errorStack = error instanceof Error ? error.stack : undefined;
+                console.error(`Failed to send password reset email to ${email}:`, errorMessage);
+                if (errorStack) {
+                    console.error('Error stack:', errorStack);
+                }
                 throw error;
             }
         });
     }
     generatePasswordResetEmailHtml(fullName, resetUrl) {
-        return `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <meta charset="utf-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Password Reset - Sahra-Al-Aman Information Technology (SAAIT)</title>
-      </head>
-      <body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Helvetica Neue', Arial, sans-serif; background: linear-gradient(135deg, #4c63d2 0%, #5a3d7a 100%); padding: 40px 20px;">
-        <table cellpadding="0" cellspacing="0" border="0" width="100%" style="max-width: 640px; margin: 0 auto;">
-
-          <!-- Spacer -->
-          <tr>
-            <td style="height: 20px;"></td>
-          </tr>
-
-          <!-- Main Card -->
-          <tr>
-            <td style="background-color: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 20px 60px rgba(0,0,0,0.15);">
-
-              <!-- Header with Gradient -->
-              <table cellpadding="0" cellspacing="0" border="0" width="100%">
-                <tr>
-                  <td style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 48px 40px; text-align: center;">
-                    <img src="${this.getLogoUrl()}" alt="SAAIT Logo" style="width: 120px; height: auto; margin: 0 auto 20px; display: block; max-width: 120px;" />
-                    <h1 style="margin: 0; color: #ffffff; font-size: 28px; font-weight: 700; letter-spacing: -0.5px;">Password Reset</h1>
-                    <p style="margin: 12px 0 0 0; color: rgba(255,255,255,0.9); font-size: 16px; font-weight: 400;">Secure your account</p>
-                  </td>
-                </tr>
-              </table>
-
-              <!-- Content -->
-              <table cellpadding="0" cellspacing="0" border="0" width="100%">
-                <tr>
-                  <td style="padding: 48px 40px;">
-
-                    <p style="margin: 0 0 24px 0; color: #2d3748; font-size: 16px; line-height: 1.7; font-weight: 400;">
-                      Hello <strong style="color: #1a202c; font-weight: 600;">${fullName}</strong>,
-                    </p>
-
-                    <p style="margin: 0 0 32px 0; color: #4a5568; font-size: 15px; line-height: 1.7;">
-                      We received a request to reset your password. Click the button below to create a new secure password. This link will expire in <strong style="color: #2d3748;">1 hour</strong> for your security.
-                    </p>
-
-                    <!-- CTA Button -->
-                    <table cellpadding="0" cellspacing="0" border="0" width="100%" style="margin: 0 0 40px 0;">
-                      <tr>
-                        <td align="center">
-                          <a href="${resetUrl}" style="display: inline-block; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: #ffffff; text-decoration: none; padding: 16px 48px; font-size: 16px; font-weight: 600; border-radius: 8px; box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4); transition: all 0.3s ease;">
-                            Reset My Password
-                          </a>
-                        </td>
-                      </tr>
-                    </table>
-
-                    <!-- Alternative Link Card -->
-                    <table cellpadding="0" cellspacing="0" border="0" width="100%" style="margin: 0 0 32px 0; background-color: #f7fafc; border-radius: 8px; border: 1px solid #e2e8f0;">
-                      <tr>
-                        <td style="padding: 20px;">
-                          <p style="margin: 0 0 12px 0; color: #718096; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px;">
-                            Or copy this link
-                          </p>
-                          <p style="margin: 0; padding: 12px; background-color: #ffffff; border-radius: 6px; border: 1px solid #e2e8f0;">
-                            <a href="${resetUrl}" style="color: #667eea; text-decoration: none; font-size: 13px; font-family: 'Courier New', monospace; word-break: break-all; line-height: 1.6;">
-                              ${resetUrl}
+        const content = `
+      <p style="margin:0 0 16px;">Hi ${fullName},</p>
+      <p style="margin:0 0 16px;">
+        A password reset was requested for your SAAIT account. Click the button below to choose a new password. The link expires in one hour.
+      </p>
+      <p style="margin:0 0 24px;">
+        <a href="${resetUrl}" style="display:inline-block;padding:12px 24px;background-color:#4338ca;color:#ffffff;text-decoration:none;border-radius:6px;">
+          Reset password
                             </a>
                           </p>
-                        </td>
-                      </tr>
-                    </table>
-
-                    <!-- Security Notice -->
-                    <table cellpadding="0" cellspacing="0" border="0" width="100%" style="margin: 0 0 32px 0; background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%); border-radius: 8px; border-left: 4px solid #f59e0b;">
-                      <tr>
-                        <td style="padding: 20px;">
-                          <table cellpadding="0" cellspacing="0" border="0" width="100%">
-                            <tr>
-                              <td style="width: 32px; vertical-align: top; padding-right: 12px; font-size: 20px;">
-                                ⚠️
-                              </td>
-                              <td>
-                                <p style="margin: 0; color: #92400e; font-size: 14px; line-height: 1.6; font-weight: 500;">
-                                  <strong style="font-weight: 600;">Security Notice:</strong> If you didn't request this password reset, please ignore this email. Your password will remain unchanged and no action is required.
-                                </p>
-                              </td>
-                            </tr>
-                          </table>
-                        </td>
-                      </tr>
-                    </table>
-
-                    <!-- Expiration Info -->
-                    <table cellpadding="0" cellspacing="0" border="0" width="100%" style="margin: 0 0 32px 0;">
-                      <tr>
-                        <td style="padding: 16px; background-color: #edf2f7; border-radius: 8px; text-align: center;">
-                          <p style="margin: 0; color: #4a5568; font-size: 13px; line-height: 1.5;">
-                            <strong style="color: #2d3748;">⏱️ Link expires in 1 hour</strong>
-                          </p>
-                        </td>
-                      </tr>
-                    </table>
-
-                    <!-- Divider -->
-                    <table cellpadding="0" cellspacing="0" border="0" width="100%" style="margin: 32px 0;">
-                      <tr>
-                        <td style="height: 1px; background-color: #e2e8f0;"></td>
-                      </tr>
-                    </table>
-
-                    <!-- Support -->
-                    <p style="margin: 0 0 8px 0; color: #4a5568; font-size: 15px; line-height: 1.6;">
-                      Need help? Our support team is here for you.
-                    </p>
-
-                    <p style="margin: 24px 0 0 0; color: #2d3748; font-size: 15px; line-height: 1.6;">
-                      Best regards,<br>
-                      <span style="font-weight: 600; color: #1a202c;">Sahra-Al-Aman Information Technology (SAAIT) Team</span>
-                    </p>
-
-                  </td>
-                </tr>
-              </table>
-
-              <!-- Footer -->
-              <table cellpadding="0" cellspacing="0" border="0" width="100%" style="background-color: #f7fafc; border-top: 1px solid #e2e8f0;">
-                <tr>
-                  <td style="padding: 32px 40px; text-align: center;">
-                    <p style="margin: 0 0 8px 0; color: #718096; font-size: 12px; line-height: 1.5;">
-                      This is an automated message. Please do not reply to this email.
-                    </p>
-                    <p style="margin: 0; color: #a0aec0; font-size: 11px; line-height: 1.5;">
-                      © ${new Date().getFullYear()} Sahra-Al-Aman Information Technology (SAAIT). All rights reserved.
-                    </p>
-                  </td>
-                </tr>
-              </table>
-
-            </td>
-          </tr>
-
-          <!-- Spacer -->
-          <tr>
-            <td style="height: 20px;"></td>
-          </tr>
-
-        </table>
-      </body>
-      </html>
+      <p style="margin:0 0 16px;font-size:14px;color:#475467;">
+        If the button doesn’t work, copy and paste this link into your browser:<br />
+        <span style="word-break:break-all;color:#1d4ed8;">${resetUrl}</span>
+      </p>
+      <p style="margin:0;font-size:14px;color:#b45309;">
+        Didn’t request this? You can ignore this message—your password stays the same.
+      </p>
     `;
+        return this.renderEmailTemplate('Reset your SAAIT password', content, {
+            preheader: 'Use the secure link to choose a new password (expires in 1 hour).',
+            accentColor: '#4338ca',
+        });
     }
     generatePasswordResetEmailText(fullName, resetUrl) {
         return `
@@ -714,139 +360,48 @@ This password reset link will expire in 1 hour for security reasons.
                 const subject = `New Ticket Assigned: ${ticketTitle}`;
                 const htmlContent = this.generateTicketCreatedEmailHtml(assignedToName, ticketTitle, raisedByName, projectName);
                 const textContent = this.generateTicketCreatedEmailText(assignedToName, ticketTitle, raisedByName, projectName);
-                yield this.transporter.sendMail({
-                    from: process.env.SMTP_FROM || '"Sahra-Al-Aman Information Technology (SAAIT)" <noreply@example.com>',
-                    to: assignedToEmail,
-                    subject: subject,
-                    text: textContent,
-                    html: htmlContent,
-                    attachments: this.getLogoAttachment(),
-                });
+                yield this.sendEmail(assignedToEmail, subject, htmlContent, textContent);
                 console.log(`Ticket creation email sent successfully to ${assignedToEmail}`);
             }
             catch (error) {
-                console.error(`Failed to send ticket creation email to ${assignedToEmail}:`, error);
+                const errorMessage = error instanceof Error ? error.message : String(error);
+                const errorStack = error instanceof Error ? error.stack : undefined;
+                console.error(`Failed to send ticket creation email to ${assignedToEmail}:`, errorMessage);
+                if (errorStack) {
+                    console.error('Error stack:', errorStack);
+                }
                 // Don't throw error to avoid failing ticket creation if email fails
             }
         });
     }
     generateTicketCreatedEmailHtml(assignedToName, ticketTitle, raisedByName, projectName) {
-        return `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <meta charset="utf-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>New Ticket Assigned - Sahra-Al-Aman Information Technology (SAAIT)</title>
-      </head>
-      <body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Helvetica Neue', Arial, sans-serif; background: linear-gradient(135deg, #4c63d2 0%, #5a3d7a 100%); padding: 40px 20px;">
-        <table cellpadding="0" cellspacing="0" border="0" width="100%" style="max-width: 640px; margin: 0 auto;">
-
-          <!-- Spacer -->
+        const content = `
+      <p style="margin:0 0 16px;font-size:15px;">Hi ${assignedToName},</p>
+      <p style="margin:0 0 16px;color:#475467;">A new ticket needs your attention in the <strong>${projectName}</strong> stream.</p>
+      <div style="margin:0 0 18px;padding:16px;border:1px solid #e2e8f0;border-radius:10px;background-color:#f8fafc;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
           <tr>
-            <td style="height: 20px;"></td>
+            <td style="font-size:13px;color:#64748b;">Title</td>
+            <td style="font-size:13px;font-weight:600;color:#0f172a;text-align:right;">${ticketTitle}</td>
           </tr>
-
-          <!-- Main Card -->
           <tr>
-            <td style="background-color: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 20px 60px rgba(0,0,0,0.15);">
-
-              <!-- Header with Gradient -->
-              <table cellpadding="0" cellspacing="0" border="0" width="100%">
-                <tr>
-                  <td style="background: linear-gradient(135deg, #2563eb 0%, #1e40af 100%); padding: 48px 40px; text-align: center;">
-                    <img src="${this.getLogoUrl()}" alt="SAAIT Logo" style="width: 120px; height: auto; margin: 0 auto 20px; display: block; max-width: 120px;" />
-                    <h1 style="margin: 0; color: #ffffff; font-size: 28px; font-weight: 700; letter-spacing: -0.5px;">New Ticket Assigned</h1>
-                    <p style="margin: 12px 0 0 0; color: rgba(255,255,255,0.9); font-size: 16px; font-weight: 400;">A new ticket has been assigned to you</p>
-                  </td>
-                </tr>
-              </table>
-
-              <!-- Content -->
-              <table cellpadding="0" cellspacing="0" border="0" width="100%">
-                <tr>
-                  <td style="padding: 48px 40px;">
-
-                    <p style="margin: 0 0 24px 0; color: #2d3748; font-size: 16px; line-height: 1.7; font-weight: 400;">
-                      Hello <strong style="color: #1a202c; font-weight: 600;">${assignedToName}</strong>,
-                    </p>
-
-                    <p style="margin: 0 0 32px 0; color: #4a5568; font-size: 15px; line-height: 1.7;">
-                      A new ticket has been assigned to you in the <strong style="color: #2d3748;">${projectName}</strong> project.
-                    </p>
-
-                    <!-- Ticket Details Card -->
-                    <table cellpadding="0" cellspacing="0" border="0" width="100%" style="margin: 0 0 32px 0; background-color: #f7fafc; border-radius: 8px; border: 1px solid #e2e8f0;">
-                      <tr>
-                        <td style="padding: 24px;">
-                          <p style="margin: 0 0 16px 0; color: #718096; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px;">
-                            Ticket Details
-                          </p>
-                          <table cellpadding="0" cellspacing="0" border="0" width="100%">
-                            <tr>
-                              <td style="padding: 8px 0; color: #4a5568; font-size: 14px; font-weight: 500;">Title:</td>
-                              <td style="padding: 8px 0; color: #2d3748; font-size: 14px; font-weight: 600; text-align: right;">${ticketTitle}</td>
-                            </tr>
-                            <tr>
-                              <td style="padding: 8px 0; color: #4a5568; font-size: 14px; font-weight: 500;">Project:</td>
-                              <td style="padding: 8px 0; color: #2d3748; font-size: 14px; font-weight: 600; text-align: right;">${projectName}</td>
-                            </tr>
-                            <tr>
-                              <td style="padding: 8px 0; color: #4a5568; font-size: 14px; font-weight: 500;">Raised by:</td>
-                              <td style="padding: 8px 0; color: #2d3748; font-size: 14px; font-weight: 600; text-align: right;">${raisedByName}</td>
-                            </tr>
-                          </table>
-                        </td>
-                      </tr>
-                    </table>
-
-                    <!-- Divider -->
-                    <table cellpadding="0" cellspacing="0" border="0" width="100%" style="margin: 32px 0;">
-                      <tr>
-                        <td style="height: 1px; background-color: #e2e8f0;"></td>
-                      </tr>
-                    </table>
-
-                    <!-- Support -->
-                    <p style="margin: 0 0 8px 0; color: #4a5568; font-size: 15px; line-height: 1.6;">
-                      If you have any questions about this ticket, please don't hesitate to reach out.
-                    </p>
-
-                    <p style="margin: 24px 0 0 0; color: #2d3748; font-size: 15px; line-height: 1.6;">
-                      Best regards,<br>
-                      <span style="font-weight: 600; color: #1a202c;">Sahra-Al-Aman Information Technology (SAAIT) Team</span>
-                    </p>
-
-                  </td>
-                </tr>
-              </table>
-
-              <!-- Footer -->
-              <table cellpadding="0" cellspacing="0" border="0" width="100%" style="background-color: #f7fafc; border-top: 1px solid #e2e8f0;">
-                <tr>
-                  <td style="padding: 32px 40px; text-align: center;">
-                    <p style="margin: 0 0 8px 0; color: #718096; font-size: 12px; line-height: 1.5;">
-                      This is an automated message. Please do not reply to this email.
-                    </p>
-                    <p style="margin: 0; color: #a0aec0; font-size: 11px; line-height: 1.5;">
-                      © ${new Date().getFullYear()} Sahra-Al-Aman Information Technology (SAAIT). All rights reserved.
-                    </p>
-                  </td>
-                </tr>
-              </table>
-
-            </td>
+            <td style="font-size:13px;color:#64748b;">Project</td>
+            <td style="font-size:13px;font-weight:600;color:#0f172a;text-align:right;">${projectName}</td>
           </tr>
-
-          <!-- Spacer -->
           <tr>
-            <td style="height: 20px;"></td>
+            <td style="font-size:13px;color:#64748b;">Raised by</td>
+            <td style="font-size:13px;font-weight:600;color:#0f172a;text-align:right;">${raisedByName}</td>
           </tr>
-
         </table>
-      </body>
-      </html>
+      </div>
+      <p style="margin:0;color:#475467;">
+        Please review the ticket details, acknowledge the assignment, and keep the status up to date so the requester can follow along.
+      </p>
     `;
+        return this.renderEmailTemplate('New ticket assigned', content, {
+            preheader: `${ticketTitle} was assigned to you in ${projectName}.`,
+            accentColor: '#0d9488',
+        });
     }
     generateTicketCreatedEmailText(assignedToName, ticketTitle, raisedByName, projectName) {
         return `
@@ -872,13 +427,25 @@ This is an automated message. Please do not reply to this email.
     }
     testConnection() {
         return __awaiter(this, void 0, void 0, function* () {
+            if (!this.resend) {
+                console.warn('Resend client is not configured. Set RESEND_API_KEY to enable email sending.');
+                return false;
+            }
             try {
-                yield this.transporter.verify();
-                console.log('Email service connection verified successfully');
+                const response = yield this.resend.apiKeys.list({ limit: 1 });
+                if (response.error) {
+                    console.error('Email service connection failed:', response.error.message);
+                    return false;
+                }
+                console.log('Email service connection verified with Resend API.');
                 return true;
             }
             catch (error) {
-                console.error('Email service connection failed:', error);
+                const errorMessage = error instanceof Error ? error.message : String(error);
+                console.error('Email service connection failed:', errorMessage);
+                if (error instanceof Error && error.stack) {
+                    console.error('   Full error:', error.stack);
+                }
                 return false;
             }
         });
