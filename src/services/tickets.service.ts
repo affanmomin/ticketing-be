@@ -17,6 +17,8 @@ export interface TicketResult {
   assignedToEmail: string | null;
   streamId: string;
   streamName: string;
+  parentStreamId: string | null;
+  parentStreamName: string | null;
   subjectId: string;
   subjectName: string;
   priorityId: string;
@@ -118,6 +120,8 @@ export async function listTickets(
             assigned_to.email AS assigned_to_email,
             t.stream_id,
             st.name AS stream_name,
+            parent_st.id AS parent_stream_id,
+            parent_st.name AS parent_stream_name,
             t.subject_id,
             sbj.name AS subject_name,
             t.priority_id,
@@ -134,6 +138,7 @@ export async function listTickets(
      JOIN project p ON p.id = t.project_id
      JOIN client c ON c.id = p.client_id
      JOIN stream st ON st.id = t.stream_id
+     LEFT JOIN stream parent_st ON parent_st.id = st.parent_stream_id
      JOIN subject sbj ON sbj.id = t.subject_id
      JOIN priority pr ON pr.id = t.priority_id
      JOIN status s ON s.id = t.status_id
@@ -160,6 +165,8 @@ export async function listTickets(
       assignedToEmail: r.assigned_to_email,
       streamId: r.stream_id,
       streamName: r.stream_name,
+      parentStreamId: r.parent_stream_id,
+      parentStreamName: r.parent_stream_name,
       subjectId: r.subject_id,
       subjectName: r.subject_name,
       priorityId: r.priority_id,
@@ -268,6 +275,8 @@ export async function createTicket(
             assigned_to.email AS assigned_to_email,
             st.id AS stream_id,
             st.name AS stream_name,
+            parent_st.id AS parent_stream_id,
+            parent_st.name AS parent_stream_name,
             sbj.id AS subject_id,
             sbj.name AS subject_name,
             pr.id AS priority_id,
@@ -278,6 +287,7 @@ export async function createTicket(
      JOIN project p ON p.id = t.project_id
      JOIN client c ON c.id = p.client_id
      JOIN stream st ON st.id = t.stream_id
+     LEFT JOIN stream parent_st ON parent_st.id = st.parent_stream_id
      JOIN subject sbj ON sbj.id = t.subject_id
      JOIN priority pr ON pr.id = t.priority_id
      JOIN status s ON s.id = t.status_id
@@ -321,6 +331,8 @@ export async function createTicket(
     assignedToEmail: details.assigned_to_email,
     streamId: ticket.stream_id,
     streamName: details.stream_name,
+    parentStreamId: details.parent_stream_id,
+    parentStreamName: details.parent_stream_name,
     subjectId: ticket.subject_id,
     subjectName: details.subject_name,
     priorityId: ticket.priority_id,
@@ -500,6 +512,8 @@ export async function updateTicket(
             assigned_to.email AS assigned_to_email,
             st.id AS stream_id,
             st.name AS stream_name,
+            parent_st.id AS parent_stream_id,
+            parent_st.name AS parent_stream_name,
             sbj.id AS subject_id,
             sbj.name AS subject_name,
             pr.id AS priority_id,
@@ -510,6 +524,7 @@ export async function updateTicket(
      JOIN project p ON p.id = t.project_id
      JOIN client c ON c.id = p.client_id
      JOIN stream st ON st.id = t.stream_id
+     LEFT JOIN stream parent_st ON parent_st.id = st.parent_stream_id
      JOIN subject sbj ON sbj.id = t.subject_id
      JOIN priority pr ON pr.id = t.priority_id
      JOIN status s ON s.id = t.status_id
@@ -535,6 +550,8 @@ export async function updateTicket(
     assignedToEmail: details.assigned_to_email,
     streamId: r.stream_id,
     streamName: details.stream_name,
+    parentStreamId: details.parent_stream_id,
+    parentStreamName: details.parent_stream_name,
     subjectId: r.subject_id,
     subjectName: details.subject_name,
     priorityId: r.priority_id,
@@ -576,6 +593,8 @@ export async function getTicket(
             assigned_to.email AS assigned_to_email,
             t.stream_id,
             st.name AS stream_name,
+            parent_st.id AS parent_stream_id,
+            parent_st.name AS parent_stream_name,
             t.subject_id,
             sbj.name AS subject_name,
             t.priority_id,
@@ -592,6 +611,7 @@ export async function getTicket(
      JOIN project p ON p.id = t.project_id
      JOIN client c ON c.id = p.client_id
      JOIN stream st ON st.id = t.stream_id
+     LEFT JOIN stream parent_st ON parent_st.id = st.parent_stream_id
      JOIN subject sbj ON sbj.id = t.subject_id
      JOIN priority pr ON pr.id = t.priority_id
      JOIN status s ON s.id = t.status_id
@@ -635,6 +655,8 @@ export async function getTicket(
     assignedToEmail: r.assigned_to_email,
     streamId: r.stream_id,
     streamName: r.stream_name,
+    parentStreamId: r.parent_stream_id,
+    parentStreamName: r.parent_stream_name,
     subjectId: r.subject_id,
     subjectName: r.subject_name,
     priorityId: r.priority_id,
