@@ -123,7 +123,7 @@ function listTickets(tx_1, organizationId_1, userRole_1, userId_1, clientId_1, f
      JOIN app_user raised_by ON raised_by.id = t.raised_by_user_id
      LEFT JOIN app_user assigned_to ON assigned_to.id = t.assigned_to_user_id
      WHERE ${whereClause}
-     ORDER BY t.created_at DESC
+     ORDER BY t.client_ticket_number DESC, t.created_at DESC
      LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`, params);
         return {
             data: rows.map(r => ({
