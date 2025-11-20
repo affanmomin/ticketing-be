@@ -40,6 +40,11 @@ CREATE TRIGGER trg_client_updated_at
 BEFORE UPDATE ON client
 FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
+CREATE TABLE client_ticket_counter (
+  client_id   uuid PRIMARY KEY REFERENCES client(id) ON DELETE CASCADE,
+  last_number integer NOT NULL DEFAULT 0 CHECK (last_number >= 0)
+);
+
 -- System users (admins + client users)
 CREATE TABLE app_user (
   id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -169,6 +174,7 @@ CREATE TABLE ticket (
   priority_id          uuid NOT NULL REFERENCES priority(id) ON DELETE RESTRICT,
   status_id            uuid NOT NULL REFERENCES status(id)   ON DELETE RESTRICT,
   title                text NOT NULL,
+  client_ticket_number text NOT NULL,
   description_md       text,
   is_deleted           boolean NOT NULL DEFAULT false,
   created_at           timestamptz NOT NULL DEFAULT now(),
@@ -186,6 +192,7 @@ CREATE INDEX ix_ticket_priority  ON ticket(priority_id);
 CREATE INDEX ix_ticket_created   ON ticket(created_at);
 CREATE INDEX ix_ticket_stream    ON ticket(stream_id);
 CREATE INDEX ix_ticket_subject   ON ticket(subject_id);
+CREATE INDEX ix_ticket_client_ticket_number ON ticket(client_ticket_number);
 CREATE TRIGGER trg_ticket_updated_at
 BEFORE UPDATE ON ticket
 FOR EACH ROW EXECUTE FUNCTION set_updated_at();

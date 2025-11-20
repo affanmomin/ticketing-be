@@ -16,6 +16,18 @@ exports.getTicket = getTicket;
 exports.deleteTicket = deleteTicket;
 const errors_1 = require("../utils/errors");
 const email_service_1 = require("./email.service");
+const ticket_number_1 = require("../utils/ticket-number");
+function getNextClientTicketNumber(tx, context) {
+    return __awaiter(this, void 0, void 0, function* () {
+        const { rows } = yield tx.query(`INSERT INTO client_ticket_counter (client_id, last_number)
+     VALUES ($1, 1)
+     ON CONFLICT (client_id)
+     DO UPDATE SET last_number = client_ticket_counter.last_number + 1
+     RETURNING last_number`, [context.clientId]);
+        const sequence = rows[0].last_number;
+        return (0, ticket_number_1.formatClientTicketNumber)(context.clientName, sequence);
+    });
+}
 /**
  * List tickets scoped by user role and organization
  */
@@ -77,6 +89,7 @@ function listTickets(tx_1, organizationId_1, userRole_1, userId_1, clientId_1, f
             p.name AS project_name,
             p.client_id,
             c.name AS client_name,
+            t.client_ticket_number,
             t.raised_by_user_id,
             raised_by.full_name AS raised_by_name,
             raised_by.email AS raised_by_email,
@@ -85,6 +98,8 @@ function listTickets(tx_1, organizationId_1, userRole_1, userId_1, clientId_1, f
             assigned_to.email AS assigned_to_email,
             t.stream_id,
             st.name AS stream_name,
+            parent_st.id AS parent_stream_id,
+            parent_st.name AS parent_stream_name,
             t.subject_id,
             sbj.name AS subject_name,
             t.priority_id,
@@ -101,6 +116,7 @@ function listTickets(tx_1, organizationId_1, userRole_1, userId_1, clientId_1, f
      JOIN project p ON p.id = t.project_id
      JOIN client c ON c.id = p.client_id
      JOIN stream st ON st.id = t.stream_id
+     LEFT JOIN stream parent_st ON parent_st.id = st.parent_stream_id
      JOIN subject sbj ON sbj.id = t.subject_id
      JOIN priority pr ON pr.id = t.priority_id
      JOIN status s ON s.id = t.status_id
@@ -116,6 +132,7 @@ function listTickets(tx_1, organizationId_1, userRole_1, userId_1, clientId_1, f
                 projectName: r.project_name,
                 clientId: r.client_id,
                 clientName: r.client_name,
+                clientTicketNumber: r.client_ticket_number,
                 raisedByUserId: r.raised_by_user_id,
                 raisedByName: r.raised_by_name,
                 raisedByEmail: r.raised_by_email,
@@ -124,6 +141,8 @@ function listTickets(tx_1, organizationId_1, userRole_1, userId_1, clientId_1, f
                 assignedToEmail: r.assigned_to_email,
                 streamId: r.stream_id,
                 streamName: r.stream_name,
+                parentStreamId: r.parent_stream_id,
+                parentStreamName: r.parent_stream_name,
                 subjectId: r.subject_id,
                 subjectName: r.subject_name,
                 priorityId: r.priority_id,
@@ -147,9 +166,13 @@ function listTickets(tx_1, organizationId_1, userRole_1, userId_1, clientId_1, f
 function createTicket(tx, projectId, raisedByUserId, streamId, subjectId, priorityId, statusId, title, descriptionMd, assignedToUserId) {
     return __awaiter(this, void 0, void 0, function* () {
         // Verify project exists
-        const { rows: projectRows } = yield tx.query('SELECT id, client_id FROM project WHERE id = $1', [projectId]);
+        const { rows: projectRows } = yield tx.query(`SELECT p.id, p.client_id, c.name AS client_name
+     FROM project p
+     JOIN client c ON c.id = p.client_id
+     WHERE p.id = $1`, [projectId]);
         if (projectRows.length === 0)
             throw (0, errors_1.notFound)('Project not found');
+        const project = projectRows[0];
         // Verify user can raise tickets in this project
         const { rows: canRaise } = yield tx.query(`SELECT 1 FROM project_member
      WHERE project_id = $1 AND user_id = $2 AND can_raise = true`, [projectId, raisedByUserId]);
@@ -162,16 +185,28 @@ function createTicket(tx, projectId, raisedByUserId, streamId, subjectId, priori
             if (canBeAssigned.length === 0)
                 throw (0, errors_1.forbidden)('User cannot be assigned tickets in this project');
         }
+        const clientTicketNumber = yield getNextClientTicketNumber(tx, {
+            clientId: project.client_id,
+            clientName: project.client_name,
+        });
         // Create ticket
         const { rows: ticketRows } = yield tx.query(`INSERT INTO ticket (
       project_id, raised_by_user_id, assigned_to_user_id, stream_id, subject_id,
-      priority_id, status_id, title, description_md
-    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+      priority_id, status_id, title, description_md, client_ticket_number
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
     RETURNING id, project_id, raised_by_user_id, assigned_to_user_id, stream_id,
               subject_id, priority_id, status_id, title, description_md,
-              is_deleted, created_at, updated_at, closed_at`, [
-            projectId, raisedByUserId, assignedToUserId || null, streamId, subjectId,
-            priorityId, statusId, title, descriptionMd || null
+              is_deleted, created_at, updated_at, closed_at, client_ticket_number`, [
+            projectId,
+            raisedByUserId,
+            assignedToUserId || null,
+            streamId,
+            subjectId,
+            priorityId,
+            statusId,
+            title,
+            descriptionMd || null,
+            clientTicketNumber,
         ]);
         const ticket = ticketRows[0];
         // Create TICKET_CREATED event
@@ -199,6 +234,8 @@ function createTicket(tx, projectId, raisedByUserId, streamId, subjectId, priori
             assigned_to.email AS assigned_to_email,
             st.id AS stream_id,
             st.name AS stream_name,
+            parent_st.id AS parent_stream_id,
+            parent_st.name AS parent_stream_name,
             sbj.id AS subject_id,
             sbj.name AS subject_name,
             pr.id AS priority_id,
@@ -209,6 +246,7 @@ function createTicket(tx, projectId, raisedByUserId, streamId, subjectId, priori
      JOIN project p ON p.id = t.project_id
      JOIN client c ON c.id = p.client_id
      JOIN stream st ON st.id = t.stream_id
+     LEFT JOIN stream parent_st ON parent_st.id = st.parent_stream_id
      JOIN subject sbj ON sbj.id = t.subject_id
      JOIN priority pr ON pr.id = t.priority_id
      JOIN status s ON s.id = t.status_id
@@ -231,6 +269,7 @@ function createTicket(tx, projectId, raisedByUserId, streamId, subjectId, priori
             projectName: details.project_name,
             clientId: details.client_id,
             clientName: details.client_name,
+            clientTicketNumber: ticket.client_ticket_number,
             raisedByUserId: ticket.raised_by_user_id,
             raisedByName: details.raised_by_name,
             raisedByEmail: details.raised_by_email,
@@ -239,6 +278,8 @@ function createTicket(tx, projectId, raisedByUserId, streamId, subjectId, priori
             assignedToEmail: details.assigned_to_email,
             streamId: ticket.stream_id,
             streamName: details.stream_name,
+            parentStreamId: details.parent_stream_id,
+            parentStreamName: details.parent_stream_name,
             subjectId: ticket.subject_id,
             subjectName: details.subject_name,
             priorityId: ticket.priority_id,
@@ -351,7 +392,7 @@ function updateTicket(tx, ticketId, updates, updatedByUserId) {
         const { rows } = yield tx.query(`UPDATE ticket SET ${updateFields.join(', ')} WHERE id = $${paramIndex}
      RETURNING id, project_id, raised_by_user_id, assigned_to_user_id, stream_id,
                subject_id, priority_id, status_id, title, description_md,
-               is_deleted, created_at, updated_at, closed_at`, params);
+               is_deleted, created_at, updated_at, closed_at, client_ticket_number`, params);
         const r = rows[0];
         // Fetch related names for the updated ticket
         const { rows: detailsRows } = yield tx.query(`SELECT
@@ -367,6 +408,8 @@ function updateTicket(tx, ticketId, updates, updatedByUserId) {
             assigned_to.email AS assigned_to_email,
             st.id AS stream_id,
             st.name AS stream_name,
+            parent_st.id AS parent_stream_id,
+            parent_st.name AS parent_stream_name,
             sbj.id AS subject_id,
             sbj.name AS subject_name,
             pr.id AS priority_id,
@@ -377,6 +420,7 @@ function updateTicket(tx, ticketId, updates, updatedByUserId) {
      JOIN project p ON p.id = t.project_id
      JOIN client c ON c.id = p.client_id
      JOIN stream st ON st.id = t.stream_id
+     LEFT JOIN stream parent_st ON parent_st.id = st.parent_stream_id
      JOIN subject sbj ON sbj.id = t.subject_id
      JOIN priority pr ON pr.id = t.priority_id
      JOIN status s ON s.id = t.status_id
@@ -398,6 +442,8 @@ function updateTicket(tx, ticketId, updates, updatedByUserId) {
             assignedToEmail: details.assigned_to_email,
             streamId: r.stream_id,
             streamName: details.stream_name,
+            parentStreamId: details.parent_stream_id,
+            parentStreamName: details.parent_stream_name,
             subjectId: r.subject_id,
             subjectName: details.subject_name,
             priorityId: r.priority_id,
@@ -410,6 +456,7 @@ function updateTicket(tx, ticketId, updates, updatedByUserId) {
             createdAt: r.created_at,
             updatedAt: r.updated_at,
             closedAt: r.closed_at,
+            clientTicketNumber: r.client_ticket_number,
         };
     });
 }
@@ -424,6 +471,7 @@ function getTicket(tx, ticketId, userRole, userId, clientId) {
             p.name AS project_name,
             p.client_id,
             c.name AS client_name,
+            t.client_ticket_number,
             c.organization_id,
             t.raised_by_user_id,
             raised_by.full_name AS raised_by_name,
@@ -433,6 +481,8 @@ function getTicket(tx, ticketId, userRole, userId, clientId) {
             assigned_to.email AS assigned_to_email,
             t.stream_id,
             st.name AS stream_name,
+            parent_st.id AS parent_stream_id,
+            parent_st.name AS parent_stream_name,
             t.subject_id,
             sbj.name AS subject_name,
             t.priority_id,
@@ -449,6 +499,7 @@ function getTicket(tx, ticketId, userRole, userId, clientId) {
      JOIN project p ON p.id = t.project_id
      JOIN client c ON c.id = p.client_id
      JOIN stream st ON st.id = t.stream_id
+     LEFT JOIN stream parent_st ON parent_st.id = st.parent_stream_id
      JOIN subject sbj ON sbj.id = t.subject_id
      JOIN priority pr ON pr.id = t.priority_id
      JOIN status s ON s.id = t.status_id
@@ -482,6 +533,7 @@ function getTicket(tx, ticketId, userRole, userId, clientId) {
             projectName: r.project_name,
             clientId: r.client_id,
             clientName: r.client_name,
+            clientTicketNumber: r.client_ticket_number,
             raisedByUserId: r.raised_by_user_id,
             raisedByName: r.raised_by_name,
             raisedByEmail: r.raised_by_email,
@@ -490,6 +542,8 @@ function getTicket(tx, ticketId, userRole, userId, clientId) {
             assignedToEmail: r.assigned_to_email,
             streamId: r.stream_id,
             streamName: r.stream_name,
+            parentStreamId: r.parent_stream_id,
+            parentStreamName: r.parent_stream_name,
             subjectId: r.subject_id,
             subjectName: r.subject_name,
             priorityId: r.priority_id,
