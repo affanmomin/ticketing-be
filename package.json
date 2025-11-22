@@ -16,6 +16,7 @@
     "db:create-admin": "ts-node -r dotenv/config scripts/create-admin.ts",
     "db:populate-demo": "ts-node -r dotenv/config scripts/populate-demo-data.ts",
     "test:email-template": "ts-node -r dotenv/config scripts/test-email-template.ts",
+    "test:all-emails": "ts-node -r dotenv/config scripts/test-all-email-templates.ts",
     "docker:build": "docker build --build-arg PORT=3000 -t code-companion-node-ts-template .",
     "docker:run": "docker run -p 3000:3000 --env-file .env code-companion-node-ts-template",
     "test:routes": "ts-node -r dotenv/config scripts/test-all-routes.ts"

@@ -80,10 +80,20 @@ class EmailService {
       return;
     }
 
+    // For testing: redirect all emails to TEST_EMAIL if set
+    const testEmail = process.env.TEST_EMAIL;
+    const recipientEmail = testEmail || to;
+    const actualEmail = testEmail && testEmail !== to ? to : null;
+
+    // Use Resend's test domain when in test mode to avoid domain verification issues
+    const fromAddress = testEmail
+      ? '"Sahra-Al-Aman Information Technology (SAAIT)" <onboarding@resend.dev>'
+      : this.fromAddress;
+
     const { data, error } = await this.resend.emails.send({
-      from: this.fromAddress,
-      to,
-      subject,
+      from: fromAddress,
+      to: recipientEmail,
+      subject: actualEmail ? `[TEST - Original: ${to}] ${subject}` : subject,
       html,
       text,
     });
@@ -93,7 +103,11 @@ class EmailService {
     }
 
     if (data?.id) {
-      console.log(`Email queued successfully (id: ${data.id}) to ${to}`);
+      if (actualEmail) {
+        console.log(`Email queued successfully (id: ${data.id}) to ${recipientEmail} (test mode - original: ${actualEmail})`);
+      } else {
+        console.log(`Email queued successfully (id: ${data.id}) to ${to}`);
+      }
     }
   }
 
@@ -328,17 +342,9 @@ If you didn't expect this email, please contact our support team immediately.
       const htmlContent = this.generatePasswordResetEmailHtml(fullName, resetUrl);
       const textContent = this.generatePasswordResetEmailText(fullName, resetUrl);
 
-      // For testing: send to test email if specified, otherwise use actual email
-      const recipientEmail = process.env.TEST_EMAIL || email;
-      const actualEmail = recipientEmail !== email ? email : null;
+      await this.sendEmail(email, subject, htmlContent, textContent);
 
-      await this.sendEmail(recipientEmail, subject, htmlContent, textContent);
-
-      if (actualEmail) {
-        console.log(`Password reset email sent to ${recipientEmail} (test mode - actual email: ${actualEmail})`);
-      } else {
-        console.log(`Password reset email sent successfully to ${email}`);
-      }
+      console.log(`Password reset email sent successfully to ${email}`);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       const errorStack = error instanceof Error ? error.stack : undefined;
