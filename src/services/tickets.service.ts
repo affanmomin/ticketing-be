@@ -2,6 +2,26 @@ import { PoolClient } from 'pg';
 import { badRequest, notFound, forbidden } from '../utils/errors';
 import { Role } from '../types/common';
 import { emailService } from './email.service';
+import { formatClientTicketNumber } from '../utils/ticket-number';
+
+interface ClientTicketNumberContext {
+  clientId: string;
+  clientName: string;
+}
+
+async function getNextClientTicketNumber(tx: PoolClient, context: ClientTicketNumberContext): Promise<string> {
+  const { rows } = await tx.query(
+    `INSERT INTO client_ticket_counter (client_id, last_number)
+     VALUES ($1, 1)
+     ON CONFLICT (client_id)
+     DO UPDATE SET last_number = client_ticket_counter.last_number + 1
+     RETURNING last_number`,
+    [context.clientId]
+  );
+
+  const sequence: number = rows[0].last_number;
+  return formatClientTicketNumber(context.clientName, sequence);
+}
 
 export interface TicketResult {
   id: string;
@@ -9,6 +29,7 @@ export interface TicketResult {
   projectName: string;
   clientId: string;
   clientName: string;
+  clientTicketNumber: string | null;
   raisedByUserId: string;
   raisedByName: string;
   raisedByEmail: string;
@@ -17,6 +38,8 @@ export interface TicketResult {
   assignedToEmail: string | null;
   streamId: string;
   streamName: string;
+  parentStreamId: string | null;
+  parentStreamName: string | null;
   subjectId: string;
   subjectName: string;
   priorityId: string;
@@ -110,6 +133,7 @@ export async function listTickets(
             p.name AS project_name,
             p.client_id,
             c.name AS client_name,
+            t.client_ticket_number,
             t.raised_by_user_id,
             raised_by.full_name AS raised_by_name,
             raised_by.email AS raised_by_email,
@@ -118,6 +142,8 @@ export async function listTickets(
             assigned_to.email AS assigned_to_email,
             t.stream_id,
             st.name AS stream_name,
+            parent_st.id AS parent_stream_id,
+            parent_st.name AS parent_stream_name,
             t.subject_id,
             sbj.name AS subject_name,
             t.priority_id,
@@ -134,13 +160,14 @@ export async function listTickets(
      JOIN project p ON p.id = t.project_id
      JOIN client c ON c.id = p.client_id
      JOIN stream st ON st.id = t.stream_id
+     LEFT JOIN stream parent_st ON parent_st.id = st.parent_stream_id
      JOIN subject sbj ON sbj.id = t.subject_id
      JOIN priority pr ON pr.id = t.priority_id
      JOIN status s ON s.id = t.status_id
      JOIN app_user raised_by ON raised_by.id = t.raised_by_user_id
      LEFT JOIN app_user assigned_to ON assigned_to.id = t.assigned_to_user_id
      WHERE ${whereClause}
-     ORDER BY t.created_at DESC
+     ORDER BY t.client_ticket_number DESC, t.created_at DESC
      LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`,
     params
   );
@@ -152,6 +179,7 @@ export async function listTickets(
       projectName: r.project_name,
       clientId: r.client_id,
       clientName: r.client_name,
+      clientTicketNumber: r.client_ticket_number,
       raisedByUserId: r.raised_by_user_id,
       raisedByName: r.raised_by_name,
       raisedByEmail: r.raised_by_email,
@@ -160,6 +188,8 @@ export async function listTickets(
       assignedToEmail: r.assigned_to_email,
       streamId: r.stream_id,
       streamName: r.stream_name,
+      parentStreamId: r.parent_stream_id,
+      parentStreamName: r.parent_stream_name,
       subjectId: r.subject_id,
       subjectName: r.subject_name,
       priorityId: r.priority_id,
@@ -194,10 +224,14 @@ export async function createTicket(
 ): Promise<TicketResult> {
   // Verify project exists
   const { rows: projectRows } = await tx.query(
-    'SELECT id, client_id FROM project WHERE id = $1',
+    `SELECT p.id, p.client_id, c.name AS client_name
+     FROM project p
+     JOIN client c ON c.id = p.client_id
+     WHERE p.id = $1`,
     [projectId]
   );
   if (projectRows.length === 0) throw notFound('Project not found');
+  const project = projectRows[0];
 
   // Verify user can raise tickets in this project
   const { rows: canRaise } = await tx.query(
@@ -217,18 +251,31 @@ export async function createTicket(
     if (canBeAssigned.length === 0) throw forbidden('User cannot be assigned tickets in this project');
   }
 
+  const clientTicketNumber = await getNextClientTicketNumber(tx, {
+    clientId: project.client_id,
+    clientName: project.client_name,
+  });
+
   // Create ticket
   const { rows: ticketRows } = await tx.query(
     `INSERT INTO ticket (
       project_id, raised_by_user_id, assigned_to_user_id, stream_id, subject_id,
-      priority_id, status_id, title, description_md
-    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+      priority_id, status_id, title, description_md, client_ticket_number
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
     RETURNING id, project_id, raised_by_user_id, assigned_to_user_id, stream_id,
               subject_id, priority_id, status_id, title, description_md,
-              is_deleted, created_at, updated_at, closed_at`,
+              is_deleted, created_at, updated_at, closed_at, client_ticket_number`,
     [
-      projectId, raisedByUserId, assignedToUserId || null, streamId, subjectId,
-      priorityId, statusId, title, descriptionMd || null
+      projectId,
+      raisedByUserId,
+      assignedToUserId || null,
+      streamId,
+      subjectId,
+      priorityId,
+      statusId,
+      title,
+      descriptionMd || null,
+      clientTicketNumber,
     ]
   );
 
@@ -268,6 +315,8 @@ export async function createTicket(
             assigned_to.email AS assigned_to_email,
             st.id AS stream_id,
             st.name AS stream_name,
+            parent_st.id AS parent_stream_id,
+            parent_st.name AS parent_stream_name,
             sbj.id AS subject_id,
             sbj.name AS subject_name,
             pr.id AS priority_id,
@@ -278,6 +327,7 @@ export async function createTicket(
      JOIN project p ON p.id = t.project_id
      JOIN client c ON c.id = p.client_id
      JOIN stream st ON st.id = t.stream_id
+     LEFT JOIN stream parent_st ON parent_st.id = st.parent_stream_id
      JOIN subject sbj ON sbj.id = t.subject_id
      JOIN priority pr ON pr.id = t.priority_id
      JOIN status s ON s.id = t.status_id
@@ -313,6 +363,7 @@ export async function createTicket(
     projectName: details.project_name,
     clientId: details.client_id,
     clientName: details.client_name,
+    clientTicketNumber: ticket.client_ticket_number,
     raisedByUserId: ticket.raised_by_user_id,
     raisedByName: details.raised_by_name,
     raisedByEmail: details.raised_by_email,
@@ -321,6 +372,8 @@ export async function createTicket(
     assignedToEmail: details.assigned_to_email,
     streamId: ticket.stream_id,
     streamName: details.stream_name,
+    parentStreamId: details.parent_stream_id,
+    parentStreamName: details.parent_stream_name,
     subjectId: ticket.subject_id,
     subjectName: details.subject_name,
     priorityId: ticket.priority_id,
@@ -479,7 +532,7 @@ export async function updateTicket(
     `UPDATE ticket SET ${updateFields.join(', ')} WHERE id = $${paramIndex}
      RETURNING id, project_id, raised_by_user_id, assigned_to_user_id, stream_id,
                subject_id, priority_id, status_id, title, description_md,
-               is_deleted, created_at, updated_at, closed_at`,
+               is_deleted, created_at, updated_at, closed_at, client_ticket_number`,
     params
   );
 
@@ -500,6 +553,8 @@ export async function updateTicket(
             assigned_to.email AS assigned_to_email,
             st.id AS stream_id,
             st.name AS stream_name,
+            parent_st.id AS parent_stream_id,
+            parent_st.name AS parent_stream_name,
             sbj.id AS subject_id,
             sbj.name AS subject_name,
             pr.id AS priority_id,
@@ -510,6 +565,7 @@ export async function updateTicket(
      JOIN project p ON p.id = t.project_id
      JOIN client c ON c.id = p.client_id
      JOIN stream st ON st.id = t.stream_id
+     LEFT JOIN stream parent_st ON parent_st.id = st.parent_stream_id
      JOIN subject sbj ON sbj.id = t.subject_id
      JOIN priority pr ON pr.id = t.priority_id
      JOIN status s ON s.id = t.status_id
@@ -535,6 +591,8 @@ export async function updateTicket(
     assignedToEmail: details.assigned_to_email,
     streamId: r.stream_id,
     streamName: details.stream_name,
+    parentStreamId: details.parent_stream_id,
+    parentStreamName: details.parent_stream_name,
     subjectId: r.subject_id,
     subjectName: details.subject_name,
     priorityId: r.priority_id,
@@ -547,6 +605,7 @@ export async function updateTicket(
     createdAt: r.created_at,
     updatedAt: r.updated_at,
     closedAt: r.closed_at,
+    clientTicketNumber: r.client_ticket_number,
   };
 }
 
@@ -567,6 +626,7 @@ export async function getTicket(
             p.name AS project_name,
             p.client_id,
             c.name AS client_name,
+            t.client_ticket_number,
             c.organization_id,
             t.raised_by_user_id,
             raised_by.full_name AS raised_by_name,
@@ -576,6 +636,8 @@ export async function getTicket(
             assigned_to.email AS assigned_to_email,
             t.stream_id,
             st.name AS stream_name,
+            parent_st.id AS parent_stream_id,
+            parent_st.name AS parent_stream_name,
             t.subject_id,
             sbj.name AS subject_name,
             t.priority_id,
@@ -592,6 +654,7 @@ export async function getTicket(
      JOIN project p ON p.id = t.project_id
      JOIN client c ON c.id = p.client_id
      JOIN stream st ON st.id = t.stream_id
+     LEFT JOIN stream parent_st ON parent_st.id = st.parent_stream_id
      JOIN subject sbj ON sbj.id = t.subject_id
      JOIN priority pr ON pr.id = t.priority_id
      JOIN status s ON s.id = t.status_id
@@ -627,6 +690,7 @@ export async function getTicket(
     projectName: r.project_name,
     clientId: r.client_id,
     clientName: r.client_name,
+    clientTicketNumber: r.client_ticket_number,
     raisedByUserId: r.raised_by_user_id,
     raisedByName: r.raised_by_name,
     raisedByEmail: r.raised_by_email,
@@ -635,6 +699,8 @@ export async function getTicket(
     assignedToEmail: r.assigned_to_email,
     streamId: r.stream_id,
     streamName: r.stream_name,
+    parentStreamId: r.parent_stream_id,
+    parentStreamName: r.parent_stream_name,
     subjectId: r.subject_id,
     subjectName: r.subject_name,
     priorityId: r.priority_id,

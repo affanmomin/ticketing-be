@@ -1,6 +1,20 @@
-import { Pool } from 'pg';
 import bcrypt from 'bcryptjs';
+import { PoolClient } from 'pg';
 import { pool } from '../src/db/pool';
+import { formatClientTicketNumber } from '../src/utils/ticket-number';
+
+async function allocateClientTicketSequence(client: PoolClient, clientId: string): Promise<number> {
+  const { rows } = await client.query(
+    `INSERT INTO client_ticket_counter (client_id, last_number)
+     VALUES ($1, 1)
+     ON CONFLICT (client_id)
+     DO UPDATE SET last_number = client_ticket_counter.last_number + 1
+     RETURNING last_number`,
+    [clientId]
+  );
+
+  return rows[0].last_number;
+}
 
 interface Credentials {
   role: 'ADMIN' | 'EMPLOYEE' | 'CLIENT';
@@ -61,6 +75,7 @@ async function main() {
     ];
 
     const clientIds: string[] = [];
+    const clientInfoById: Record<string, { name: string }> = {};
     for (const clientData of clients) {
       const { rows } = await client.query(
         `INSERT INTO client (organization_id, name, email, phone, active)
@@ -69,6 +84,7 @@ async function main() {
         [organizationId, clientData.name, clientData.email, clientData.phone]
       );
       clientIds.push(rows[0].id);
+      clientInfoById[rows[0].id] = { name: clientData.name };
       console.log(`   ✓ Client created: ${clientData.name}`);
     }
 
@@ -278,9 +294,13 @@ async function main() {
         const assignedTo = ticketIndex % 3 === 0 ? null : employeeIds[ticketIndex % employeeIds.length];
         const raisedBy = ticketIndex % 2 === 0 ? adminId : employeeIds[ticketIndex % employeeIds.length];
 
+        const clientMeta = clientInfoById[project.clientId] ?? { name: 'UNKNOWN' };
+        const ticketSequence = await allocateClientTicketSequence(client, project.clientId);
+        const clientTicketNumber = formatClientTicketNumber(clientMeta.name, ticketSequence);
+
         const { rows } = await client.query(
-          `INSERT INTO ticket (project_id, raised_by_user_id, assigned_to_user_id, stream_id, subject_id, priority_id, status_id, title, description_md, is_deleted)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, false)
+          `INSERT INTO ticket (project_id, raised_by_user_id, assigned_to_user_id, stream_id, subject_id, priority_id, status_id, title, description_md, client_ticket_number, is_deleted)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, false)
            RETURNING id`,
           [
             projectId,
@@ -292,6 +312,7 @@ async function main() {
             statusId,
             title,
             `Description for ${title}. This is a detailed description of the issue.`,
+            clientTicketNumber,
           ]
         );
         const ticketId = rows[0].id;
