@@ -1,6 +1,6 @@
 import { Pool } from 'pg';
 import bcrypt from 'bcryptjs';
-import nodemailer from 'nodemailer';
+import { Resend } from 'resend';
 import { encodeCredentials } from '../src/utils/credentials';
 import dotenv from 'dotenv';
 
@@ -26,18 +26,17 @@ interface EmailUser {
 }
 
 class EmailTestService {
-  private transporter: nodemailer.Transporter;
+  private resend: Resend;
+  private readonly fromAddress: string;
 
   constructor() {
-    this.transporter = nodemailer.createTransport({
-      host: process.env.SMTP_HOST || 'smtp.gmail.com',
-      port: parseInt(process.env.SMTP_PORT || '587'),
-      secure: false,
-      auth: {
-        user: process.env.SMTP_USER,
-        pass: process.env.SMTP_PASS,
-      },
-    });
+    const apiKey = process.env.RESEND_API_KEY;
+    if (!apiKey) {
+      throw new Error('RESEND_API_KEY is not set. Unable to send emails.');
+    }
+
+    this.resend = new Resend(apiKey);
+    this.fromAddress = process.env.SMTP_FROM || '"Ticketing System" <onboarding@resend.dev>';
   }
 
   async sendBeautifulWelcomeEmail(userData: EmailUser): Promise<void> {
@@ -220,12 +219,16 @@ class EmailTestService {
       </html>
     `;
 
-    await this.transporter.sendMail({
-      from: process.env.SMTP_FROM || '"Ticketing System" <noreply@example.com>',
+    const { error } = await this.resend.emails.send({
+      from: this.fromAddress,
       to: TEST_EMAIL, // Always send to your email
       subject: `Account Created - Ticketing System`,
       html: htmlContent,
     });
+
+    if (error) {
+      throw new Error(error.message);
+    }
 
     console.log(`✅ Professional email sent to ${TEST_EMAIL} for ${userData.userType} (${userData.name})`);
   }

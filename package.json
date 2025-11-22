@@ -16,6 +16,7 @@
     "db:create-admin": "ts-node -r dotenv/config scripts/create-admin.ts",
     "db:populate-demo": "ts-node -r dotenv/config scripts/populate-demo-data.ts",
     "test:email-template": "ts-node -r dotenv/config scripts/test-email-template.ts",
+    "test:all-emails": "ts-node -r dotenv/config scripts/test-all-email-templates.ts",
     "docker:build": "docker build --build-arg PORT=3000 -t code-companion-node-ts-template .",
     "docker:run": "docker run -p 3000:3000 --env-file .env code-companion-node-ts-template",
     "test:routes": "ts-node -r dotenv/config scripts/test-all-routes.ts"
@@ -25,7 +26,6 @@
   "license": "MIT",
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",
-    "@types/nodemailer": "^7.0.3",
     "@types/pg": "^8.15.5",
     "@types/supertest": "^6.0.3",
     "node-test-junit-reporter": "^2.0.1",
@@ -36,7 +36,6 @@
     "typescript": "^5.8.3"
   },
   "dependencies": {
-    "dotenv": "^16.5.0",
     "@aws-sdk/client-s3": "^3.914.0",
     "@aws-sdk/s3-request-presigner": "^3.914.0",
     "@fastify/autoload": "^6.3.0",
@@ -49,12 +48,13 @@
     "@fastify/swagger-ui": "^5.2.3",
     "axios": "^1.12.2",
     "bcryptjs": "^3.0.2",
+    "dotenv": "^16.5.0",
     "fastify": "^5.2.0",
     "fastify-plugin": "^5.1.0",
     "fastify-type-provider-zod": "^6.0.0",
-    "nodemailer": "^7.0.10",
     "pg": "^8.16.3",
     "postgres": "^3.4.7",
+    "resend": "^6.4.2",
     "zod": "^4.1.12"
   }
 }

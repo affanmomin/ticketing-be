@@ -40,13 +40,11 @@ S3_BUCKET=attachments
 S3_ACCESS_KEY_ID=your_key
 S3_SECRET_ACCESS_KEY=your_secret
 
-# Email Configuration (optional for local testing)
-SMTP_HOST=localhost
-SMTP_PORT=587
-SMTP_SECURE=false
-SMTP_USER=
-SMTP_PASS=
+# Email Configuration (Resend)
+RESEND_API_KEY=your_resend_api_key
 SMTP_FROM="Sahra-Al-Aman Information Technology (SAAIT)" <noreply@example.com>
+# Leave SMTP_FROM unset to use Resend's default (onboarding@resend.dev), or
+# verify your own domain at https://resend.com/domains for a custom sender.
 
 # Application Base URL (for email links)
 APP_BASE_URL=http://localhost:5173

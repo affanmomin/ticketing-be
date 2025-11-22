@@ -1,36 +1,24 @@
-import nodemailer from 'nodemailer';
 import dotenv from 'dotenv';
+import { Resend } from 'resend';
 
 // Load environment variables
 dotenv.config();
 
-const TEST_EMAIL = 'affanmomin14@gmail.com';
+const TEST_EMAIL = process.env.TEST_EMAIL || 'affanmomin14@gmail.com';
 
 async function testEmail() {
-  console.log('🧪 Testing Email Configuration...\n');
+  console.log('🧪 Testing Resend email configuration...\n');
 
-  const transporter = nodemailer.createTransport({
-    host: process.env.SMTP_HOST || 'smtp.gmail.com',
-    port: parseInt(process.env.SMTP_PORT || '587'),
-    secure: process.env.SMTP_SECURE === 'true',
-    auth: {
-      user: process.env.SMTP_USER,
-      pass: process.env.SMTP_PASS,
-    },
-  });
-
-  // Test connection
-  console.log('1️⃣  Testing SMTP connection...');
-  try {
-    await transporter.verify();
-    console.log('✅ SMTP connection verified!\n');
-  } catch (error: any) {
-    console.error('❌ SMTP connection failed:', error.message);
+  const apiKey = process.env.RESEND_API_KEY;
+  if (!apiKey) {
+    console.error('❌ RESEND_API_KEY is not set. Please add it to your environment.');
     process.exit(1);
   }
 
+  const resend = new Resend(apiKey);
+
   // Send test email
-  console.log('2️⃣  Sending test password reset email...');
+  console.log('📤 Sending test password reset email via Resend...');
   const resetToken = 'test-token-1234567890abcdef';
   const resetUrl = `${process.env.APP_BASE_URL || 'http://localhost:5173'}/reset-password?token=${resetToken}`;
 
@@ -44,7 +32,7 @@ async function testEmail() {
     </head>
     <body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif; background-color: #f5f5f5; padding: 40px 20px;">
       <table cellpadding="0" cellspacing="0" border="0" width="100%" style="max-width: 600px; margin: 0 auto; background-color: #ffffff;">
-        
+
         <!-- Header -->
         <tr>
           <td style="background-color: #1a1a1a; padding: 32px 40px; text-align: left;">
@@ -56,7 +44,7 @@ async function testEmail() {
         <tr>
           <td style="padding: 48px 40px;">
             <h2 style="margin: 0 0 16px 0; color: #1a1a1a; font-size: 20px; font-weight: 600;">Password Reset Request</h2>
-            
+
             <p style="margin: 0 0 32px 0; color: #4a4a4a; font-size: 15px; line-height: 1.6;">
               Hello Test User,
             </p>
@@ -120,20 +108,26 @@ async function testEmail() {
   `;
 
   try {
-    const info = await transporter.sendMail({
-      from: process.env.SMTP_FROM || '"Ticketing System" <noreply@example.com>',
+    const { data, error } = await resend.emails.send({
+      from: process.env.SMTP_FROM || '"Ticketing System" <onboarding@resend.dev>',
       to: TEST_EMAIL,
       subject: 'Password Reset Request - Ticketing System (Test)',
       html: htmlContent,
       text: `Password Reset Request\n\nHello Test User,\n\nClick this link to reset your password: ${resetUrl}\n\nThis link expires in 1 hour.`,
     });
 
+    if (error) {
+      console.error('❌ Failed to send email:', error.message);
+      process.exit(1);
+    }
+
     console.log('✅ Email sent successfully!');
-    console.log(`   Message ID: ${info.messageId}`);
+    if (data?.id) {
+      console.log(`   Message ID: ${data.id}`);
+    }
     console.log(`   To: ${TEST_EMAIL}`);
-    console.log(`   From: ${process.env.SMTP_FROM || 'noreply@example.com'}`);
-    console.log('\n📬 Check your inbox at affanmomin14@gmail.com');
-    console.log('   (Also check spam/junk folder if not in inbox)');
+    console.log(`   From: ${process.env.SMTP_FROM || 'onboarding@resend.dev'}`);
+    console.log('\n📬 Check your inbox (and spam folder if needed).');
   } catch (error: any) {
     console.error('❌ Failed to send email:', error.message);
     if (error.response) {
